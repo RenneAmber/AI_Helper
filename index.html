@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>医疗助手 Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+           margin: 0; background: #f5f7fa; color: #222; }
+    .page { max-width: 780px; margin: 0 auto; padding: 32px 16px; }
+    h1 { font-size: 1.5rem; margin: 0 0 4px; }
+    .subtitle { color: #666; font-size: 0.85rem; margin-bottom: 20px; }
+    .guide { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; }
+    .guide h2 { margin: 0 0 8px; font-size: 1rem; }
+    .guide p { margin: 4px 0; font-size: 0.86rem; color: #374151; }
+    .guide .limit { color: #92400e; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 8px 10px; margin-top: 10px; }
+    .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+    .tag { background: #e0e7ff; color: #3730a3; border-radius: 20px;
+           padding: 4px 12px; font-size: 0.78rem; cursor: pointer; }
+    .tag:hover { background: #c7d2fe; }
+
+    .module-status { background: #fff; border: 1px solid #dbe4f0; border-radius: 12px; padding: 10px 12px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .module-status .left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .module-status .label { font-size: 0.78rem; color: #64748b; }
+    .module-status .pill { font-size: 0.78rem; border-radius: 999px; padding: 4px 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; }
+    .module-status .agent { font-size: 0.76rem; color: #334155; background: #e2e8f0; border-radius: 999px; padding: 4px 10px; }
+    .module-status .switch-hint { font-size: 0.76rem; color: #9a3412; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 4px 8px; }
+
+    .patient-bar { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .patient-bar .label { color: #475569; font-size: 0.8rem; }
+    .patient-bar input { width: 130px; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.86rem; }
+    .patient-bar button { padding: 7px 10px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; cursor: pointer; font-size: 0.8rem; }
+    .patient-bar button:hover { background: #eef2ff; border-color: #a5b4fc; }
+    .patient-bar .active { font-size: 0.78rem; color: #0f172a; background: #e2e8f0; border-radius: 999px; padding: 4px 10px; }
+
+    /* 对话列表 */
+    #history { display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; min-height: 60px; }
+    .bubble { border-radius: 14px; padding: 14px 18px; max-width: 88%; line-height: 1.7; font-size: 0.92rem; }
+    .user-bubble { background: #2563eb; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+    .bot-bubble  { background: #fff; border: 1px solid #e5e7eb; align-self: flex-start; border-bottom-left-radius: 4px; }
+    .bot-bubble.clarify { border-color: #fbbf24; background: #fffbeb; }
+    .bot-bubble.emergency-focus {
+      border: 2px solid #ef4444;
+      color: #7f1d1d;
+      box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18), 0 0 18px rgba(239, 68, 68, 0.42);
+      animation: emergencyPulse 1.15s infinite ease-in-out;
+    }
+
+    @keyframes emergencyPulse {
+      0% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18), 0 0 18px rgba(239, 68, 68, 0.42); }
+      50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.28), 0 0 22px rgba(239, 68, 68, 0.62); }
+      100% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18), 0 0 18px rgba(239, 68, 68, 0.42); }
+    }
+    .badge { display: inline-block; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px;
+             margin-bottom: 8px; font-weight: 600; }
+    .badge-final   { background: #d1fae5; color: #065f46; }
+    .badge-clarify { background: #fef3c7; color: #92400e; }
+    .badge-rag     { background: #e0e7ff; color: #3730a3; }
+
+    /* 输入区 */
+    .input-row { display: flex; gap: 8px; }
+    input[type="text"] { flex: 1; padding: 11px 14px; border: 1px solid #d1d5db;
+                         border-radius: 10px; font-size: 0.92rem; outline: none; }
+    input[type="text"]:focus { border-color: #2563eb; }
+    button#send { padding: 11px 20px; border: 0; background: #2563eb; color: #fff;
+                  border-radius: 10px; cursor: pointer; font-size: 0.92rem; }
+    button#send:disabled { background: #93c5fd; cursor: not-allowed; }
+    button#reset { padding: 11px 14px; border: 1px solid #d1d5db; background: #fff;
+                   border-radius: 10px; cursor: pointer; color: #555; font-size: 0.92rem; }
+
+    /* markdown 内容重置 */
+    .bubble p  { margin: 0.4em 0; }
+    .bubble ul, .bubble ol { padding-left: 1.4em; margin: 0.4em 0; }
+    .bubble pre { background: #0b1021; color: #e5e7eb; padding: 10px; border-radius: 8px; overflow: auto; }
+    .bubble code { font-family: ui-monospace, Consolas, monospace; font-size: 0.88em; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #e5e7eb; padding: 6px 10px; font-size: 0.88em; }
+
+    .hint { font-size: 0.75rem; color: #9ca3af; margin-top: 6px; text-align: center; }
+
+    /* 严重程度横幅 */
+    .severity-banner { border-radius: 10px; padding: 10px 14px; margin-bottom: 10px; font-size: 0.88rem; font-weight: 600; display: flex; align-items: flex-start; gap: 8px; }
+    .severity-banner .sev-icon { font-size: 1.3rem; line-height: 1; flex-shrink: 0; }
+    .severity-banner .sev-body { flex: 1; }
+    .severity-banner .sev-title { font-size: 0.95rem; margin-bottom: 4px; }
+    .severity-banner .sev-reasons { font-size: 0.78rem; font-weight: 400; opacity: 0.85; margin-bottom: 6px; }
+    .severity-banner .sev-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .severity-banner .sev-action-btn { font-size: 0.78rem; font-weight: 600; padding: 3px 10px; border-radius: 6px; border: none; cursor: default; }
+    .sev-red   { background: #fee2e2; border: 1.5px solid #f87171; color: #991b1b; }
+    .sev-red   .sev-action-btn { background: #ef4444; color: #fff; }
+    .sev-orange{ background: #fff7ed; border: 1.5px solid #fb923c; color: #9a3412; }
+    .sev-orange .sev-action-btn { background: #f97316; color: #fff; }
+    .sev-yellow{ background: #fffbeb; border: 1.5px solid #fbbf24; color: #92400e; }
+    .sev-yellow .sev-action-btn { background: #f59e0b; color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>🏥 医疗智能助手</h1>
+    <p class="subtitle">可自动识别挂号、查询报告、解读报告等医疗需求，并调用对应微服务。</p>
+
+    <section class="guide">
+      <h2>页面操作步骤（含含义与限制）</h2>
+      <p>第 1 步：输入需求。越具体越好（医院/科室/时间/报告类型），可减少追问轮次。</p>
+      <p>第 2 步：点击发送。系统会先判断是医疗任务还是普通问答，再决定走哪个后端链路。</p>
+      <p>第 3 步：看颜色提示。黄色表示信息不完整需要补充，绿色表示工具已成功执行，蓝色表示普通问答。</p>
+      <p>第 4 步：如出现追问，直接继续回复即可。页面会自动复用当前会话 ID，保持同一任务上下文。</p>
+      <p>第 5 步：点右侧重置可清空页面并重建会话，适合切换到全新问题。</p>
+      <div class="limit">
+        限制说明：单次输入长度受后端限制（默认 5000 字符）；本页面是演示版，不做诊断，仅用于流程编排与信息解释。
+      </div>
+    </section>
+
+    <section class="module-status" id="moduleStatus" style="display:none;">
+      <div class="left">
+        <span class="label">当前模块</span>
+        <span class="pill" id="moduleLabel">综合医疗咨询</span>
+        <span class="agent" id="moduleAgent">general_medical_agent</span>
+      </div>
+      <span class="switch-hint" id="moduleHint" style="display:none;"></span>
+    </section>
+
+    <section class="patient-bar">
+      <span class="label">当前患者</span>
+      <input id="patientId" type="text" value="P001" placeholder="例如 P001" />
+      <button id="newPatientBtn" type="button">新患者重新开始</button>
+      <button id="switchPatientBtn" type="button">切换患者并清空会话</button>
+      <span class="active" id="activePatient">Patient: P001</span>
+    </section>
+
+    <!-- 快捷示例 -->
+    <div class="tags">
+      <span class="tag" onclick="fill('帮我预约心内科门诊，明天上午')">挂号示例</span>
+      <span class="tag" onclick="fill('查一下我最近的血脂化验报告')">查询报告</span>
+      <span class="tag" onclick="fill('帮我解读一下这份血脂检查报告')">解读报告</span>
+      <span class="tag" onclick="fill('我想挂号同时查看上次的检查结果')">复合任务</span>
+      <!-- 新功能示例 -->
+      <span class="tag" onclick="fill('我最近3天胸闷呼吸困难，血压160/95，有高血压史，想挂心内科')">🆕 智能预约问诊</span>
+      <span class="tag" onclick="fill('我有高血压5年，要建立定期随访档案并设置提醒')">🆕 建立慢病档案</span>
+      <span class="tag" onclick="fill('提醒我做一下高血压和糖尿病的定期复查')">🆕 慢病提醒</span>
+    </div>
+
+    <!-- 对话历史 -->
+    <div id="history"></div>
+
+    <!-- 输入 -->
+    <div class="input-row">
+      <input id="msg" type="text" placeholder="告诉我你的医疗需求，例如：帮我挂号…" />
+      <button id="send">发送</button>
+      <button id="reset" title="清空对话">↺</button>
+    </div>
+    <p class="hint">回复类型：<b>黄色</b>=需要补充信息  <b>绿色</b>=已完成调用  <b>蓝色</b>=普通问答</p>
+  </div>
+
+<script>
+  // sessionId 用于多轮追问：后端返回后保存，下一次请求带上它。
+  let sessionId = null;
+  let patientId = 'P001';
+  const MAX_INPUT_CHARS = 5000; // 与后端默认 MAX_INPUT_CHARS 保持一致。
+
+  const sendBtn  = document.getElementById('send');
+  const resetBtn = document.getElementById('reset');
+  const msgInput = document.getElementById('msg');
+  const history  = document.getElementById('history');
+  const patientInput = document.getElementById('patientId');
+  const activePatient = document.getElementById('activePatient');
+  const newPatientBtn = document.getElementById('newPatientBtn');
+  const switchPatientBtn = document.getElementById('switchPatientBtn');
+
+  function fill(text) { msgInput.value = text; msgInput.focus(); }
+
+  function refreshPatientTag() {
+    const val = (patientInput && patientInput.value || '').trim() || 'P001';
+    patientId = val;
+    if (activePatient) activePatient.textContent = 'Patient: ' + patientId;
+  }
+
+  function clearConversationState() {
+    sessionId = null;
+    history.innerHTML = '';
+    const statusEl = document.getElementById('moduleStatus');
+    const hintEl = document.getElementById('moduleHint');
+    if (statusEl) statusEl.style.display = 'none';
+    if (hintEl) {
+      hintEl.style.display = 'none';
+      hintEl.textContent = '';
+    }
+  }
+
+  function addBubble(html, cls, badge) {
+    const div = document.createElement('div');
+    div.className = 'bubble ' + cls;
+    if (badge) {
+      const b = document.createElement('span');
+      b.className = 'badge ' + badge.cls;
+      b.textContent = badge.label;
+      div.appendChild(b);
+      div.appendChild(document.createElement('br'));
+    }
+    const content = document.createElement('span');
+    content.innerHTML = html;
+    div.appendChild(content);
+    history.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    return div;
+  }
+
+  function updateModuleStatus(data) {
+    const routedTo = data && data.routed_to;
+    const statusEl = document.getElementById('moduleStatus');
+    const labelEl = document.getElementById('moduleLabel');
+    const agentEl = document.getElementById('moduleAgent');
+    const hintEl = document.getElementById('moduleHint');
+    if (!statusEl || routedTo !== 'medical_agent') return;
+
+    statusEl.style.display = 'flex';
+    labelEl.textContent = data.current_module_label || '综合医疗咨询';
+    agentEl.textContent = data.current_agent || 'general_medical_agent';
+
+    if (data.module_switch_suggestion) {
+      hintEl.style.display = 'inline-block';
+      hintEl.textContent = data.module_switch_suggestion;
+    } else {
+      hintEl.style.display = 'none';
+      hintEl.textContent = '';
+    }
+  }
+
+  async function send() {
+    const text = msgInput.value.trim();
+    if (!text) return;
+    if (text.length > MAX_INPUT_CHARS) {
+      addBubble('输入过长：请控制在 ' + MAX_INPUT_CHARS + ' 字符以内。', 'bot-bubble');
+      return;
+    }
+
+    // 1) 先把用户消息回显到页面，保证交互即时反馈。
+    addBubble(escHtml(text), 'user-bubble');
+    msgInput.value = '';
+    sendBtn.disabled = true;
+    // 2) 临时占位提示，避免用户误以为无响应。
+    addBubble('思考中…', 'bot-bubble thinking');
+
+    try {
+      const body = { message: text };
+      refreshPatientTag();
+      body.patient_id = patientId;
+      // 3) 多轮追问场景下带上 session_id，保证后端延续同一任务状态。
+      if (sessionId) body.session_id = sessionId;
+
+      const res  = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      // 移除"思考中"气泡
+      const thinking = history.querySelector('.thinking');
+      if (thinking) thinking.remove();
+
+      if (data.error) { addBubble(escHtml(data.error), 'bot-bubble'); return; }
+
+      // 4) 保存 session_id：后续每一轮自动串联。
+      if (data.session_id) sessionId = data.session_id;
+
+      // 5) 根据后端路由结果决定样式与徽章，帮助用户理解当前阶段。
+      let cls = 'bot-bubble', badge = null;
+      if (data.routed_to === 'medical_agent') {
+        if (data.type === 'clarification') {
+          cls = 'bot-bubble clarify';
+          badge = { cls: 'badge-clarify', label: '⚠ 需要补充信息' };
+        } else {
+          badge = { cls: 'badge-final', label: '✓ 医疗任务已完成' };
+        }
+      } else {
+        badge = { cls: 'badge-rag', label: '普通问答' };
+      }
+
+      const botBubble = addBubble(data.html || escHtml(data.markdown || '我不知道'), cls, badge);
+
+      updateModuleStatus(data);
+
+      // 如果返回了严重程度，在气泡下方插入横幅
+      const severity = data.json && data.json.severity;
+      const banner = buildSeverityBanner(severity);
+      if (banner) history.appendChild(banner);
+      if (severity && String(severity.level || '').toUpperCase() === 'RED' && botBubble) {
+        botBubble.classList.add('emergency-focus');
+      }
+
+      if (data.module_switch_suggestion) {
+        addBubble(escHtml(data.module_switch_suggestion), 'bot-bubble clarify');
+      }
+    } catch (e) {
+      history.querySelector('.thinking')?.remove();
+      addBubble('请求失败：' + escHtml(e.message), 'bot-bubble');
+    } finally {
+      sendBtn.disabled = false;
+      msgInput.focus();
+    }
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // 严重程度横幅（RED / ORANGE / YELLOW）
+  function buildSeverityBanner(severity) {
+    if (!severity || !severity.level) return null;
+    const level = severity.level.toUpperCase();
+    if (level === 'WHITE') return null;
+
+    const configs = {
+      RED:    { cls: 'sev-red',    icon: '🚨', title: '⚠ 紧急情况（红色预警）',  actions: ['立即复测生命体征', '联系医生 / 呼叫 120', '前往急诊室'] },
+      ORANGE: { cls: 'sev-orange', icon: '⚠️', title: '严重症状（橙色预警）',     actions: ['尽快就诊', '避免独自外出'] },
+      YELLOW: { cls: 'sev-yellow', icon: '💛', title: '中等症状（黄色提示）',     actions: ['安排门诊就诊', '密切观察症状变化'] },
+    };
+    const cfg = configs[level];
+    if (!cfg) return null;
+
+    const div = document.createElement('div');
+    div.className = 'severity-banner ' + cfg.cls;
+
+    const reasons = (severity.reasons || []).slice(0, 3).map(r => escHtml(r)).join('；');
+    const actionsHtml = cfg.actions.map(a =>
+      `<span class="sev-action-btn">${escHtml(a)}</span>`
+    ).join('');
+
+    div.innerHTML = `
+      <span class="sev-icon">${cfg.icon}</span>
+      <div class="sev-body">
+        <div class="sev-title">${cfg.title}（评分 ${severity.score || ''}）</div>
+        ${reasons ? `<div class="sev-reasons">触发原因：${reasons}</div>` : ''}
+        <div class="sev-actions">${actionsHtml}</div>
+      </div>`;
+    return div;
+  }
+
+  resetBtn.addEventListener('click', () => {
+    // 重置按钮语义：页面清空 + 放弃当前会话，后续请求会创建新 session。
+    clearConversationState();
+    msgInput.focus();
+  });
+  newPatientBtn.addEventListener('click', () => {
+    refreshPatientTag();
+    clearConversationState();
+    addBubble('已创建新患者会话：' + escHtml(patientId) + '。请继续描述症状。', 'bot-bubble');
+    msgInput.focus();
+  });
+  switchPatientBtn.addEventListener('click', () => {
+    refreshPatientTag();
+    clearConversationState();
+    addBubble('已切换到患者：' + escHtml(patientId) + '，并清空上一位患者会话。', 'bot-bubble');
+    msgInput.focus();
+  });
+  patientInput.addEventListener('change', refreshPatientTag);
+  refreshPatientTag();
+  sendBtn.addEventListener('click', send);
+  msgInput.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+</script>
+</body>
+</html>

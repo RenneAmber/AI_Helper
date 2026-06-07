@@ -1,0 +1,25 @@
+# =============================================================================
+# Kubernetes Service：为一组 Pod 提供稳定的虚拟 IP 和 DNS 名
+# Pod IP 是会变的（重启、扩缩容），Service 屏蔽这种变化
+# =============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: proactive-ai-backend       # 集群内 DNS 名：proactive-ai-backend.<namespace>.svc.cluster.local
+spec:
+  # type:
+  #   ClusterIP    —— 仅集群内访问（最常用，配合 Ingress 对外）
+  #   NodePort     —— 把端口映射到每个节点的端口，调试用
+  #   LoadBalancer —— 申请云厂商 LB 公网入口
+  type: ClusterIP
+
+  # selector 决定这个 Service 后面挂哪些 Pod
+  # 必须与 Deployment 里 Pod 的 labels 匹配
+  selector:
+    app: proactive-ai-backend
+
+  ports:
+    - name: http
+      port: 80                     # Service 自身对集群暴露的端口（其他服务通过 :80 调用）
+      targetPort: 8100             # 流量最终转发到 Pod 容器的 8100 端口

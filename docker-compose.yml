@@ -1,0 +1,95 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: chatai-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chatdb}
+      POSTGRES_USER: ${POSTGRES_USER:-chat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chat}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chat} -d ${POSTGRES_DB:-chatdb}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: chatai-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  fastapi:
+    build:
+      context: ./backend_fastapi
+      dockerfile: Dockerfile
+    container_name: chatai-fastapi
+    environment:
+      APP_NAME: chat-ai-fastapi
+      ENV: docker
+      POSTGRES_DSN: postgresql+asyncpg://${POSTGRES_USER:-chat}:${POSTGRES_PASSWORD:-chat}@postgres:5432/${POSTGRES_DB:-chatdb}
+      REDIS_URL: redis://redis:6379/0
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-change-me-in-prod}
+      MEMORY_MAX_ITEMS: ${MEMORY_MAX_ITEMS:-20}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2025-01-01-preview}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-41_milky}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nestjs:
+    build:
+      context: ./gateway_nestjs
+      dockerfile: Dockerfile
+    container_name: chatai-nestjs
+    environment:
+      PORT: 3000
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-prod}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      DEMO_USER: ${DEMO_USER:-admin}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-admin123}
+      FASTAPI_BASE_URL: http://fastapi:8000
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-change-me-in-prod}
+      THROTTLE_TTL: ${THROTTLE_TTL:-60}
+      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-30}
+    ports:
+      - "3000:3000"
+    depends_on:
+      fastapi:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend_react
+      dockerfile: Dockerfile
+    container_name: chatai-frontend
+    environment:
+      VITE_API_BASE: http://localhost:3000
+    ports:
+      - "5173:5173"
+    depends_on:
+      nestjs:
+        condition: service_started
+
+volumes:
+  pg_data:
+  redis_data:

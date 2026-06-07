@@ -1,0 +1,103 @@
+### 后端基础地址（可在 VS Code REST Client 插件中直接点 Send Request）
+@base = http://localhost:8100
+@user_id = u1
+@session_id = s1
+
+###############################################################################
+# 运维
+###############################################################################
+
+### 存活探针
+GET {{base}}/healthz
+
+### 就绪探针
+GET {{base}}/readyz
+
+### Prometheus 指标（text/plain exposition）
+GET {{base}}/metrics
+
+###############################################################################
+# 推理
+###############################################################################
+
+### 普通对话
+POST {{base}}/v1/chat
+Content-Type: application/json
+
+{
+  "user_id": "{{user_id}}",
+  "session_id": "{{session_id}}",
+  "message": "用一句话介绍 FastAPI",
+  "max_tokens": 128
+}
+
+### 流式对话（SSE，控制台会持续接收 token 事件）
+POST {{base}}/v1/chat/stream
+Content-Type: application/json
+
+{
+  "user_id": "{{user_id}}",
+  "session_id": "{{session_id}}",
+  "message": "写一首关于雨夜的两句小诗",
+  "max_tokens": 128
+}
+
+###############################################################################
+# 记忆
+###############################################################################
+
+### 写入一条语义事实（profile / fact / reminder）
+POST {{base}}/v1/memory/facts
+Content-Type: application/json
+
+{
+  "user_id": "{{user_id}}",
+  "kind": "profile",
+  "content": "用户偏好简洁、中文输出，关注高并发后端"
+}
+
+### 列出用户的所有事实
+GET {{base}}/v1/memory/facts?user_id={{user_id}}
+
+### 关键字检索
+GET {{base}}/v1/memory/facts/search?user_id={{user_id}}&q=后端
+
+### 查看会话的最新滚动摘要
+GET {{base}}/v1/memory/summaries/{{session_id}}
+
+###############################################################################
+# 工作流
+###############################################################################
+
+### 列出可用工具
+GET {{base}}/v1/workflows/tools
+
+### 同步执行：抓笔记 -> 总结 -> 抽取行动项
+POST {{base}}/v1/workflows
+Content-Type: application/json
+
+{
+  "user_id": "{{user_id}}",
+  "goal": "整理今天的工作笔记",
+  "steps": [
+    { "tool": "fetch_notes", "args": { "user_id": "{{user_id}}" } },
+    { "tool": "summarize",   "args": {} },
+    { "tool": "extract_actions", "args": {} }
+  ]
+}
+
+### 异步入队：长任务场景，立即返回 workflow_id
+POST {{base}}/v1/workflows/async
+Content-Type: application/json
+
+{
+  "user_id": "{{user_id}}",
+  "goal": "异步整理周报",
+  "steps": [
+    { "tool": "fetch_notes", "args": { "user_id": "{{user_id}}" } },
+    { "tool": "summarize",   "args": {} }
+  ]
+}
+
+### 查询工作流状态（把上一步返回的 workflow_id 填进来）
+GET {{base}}/v1/workflows/REPLACE_WITH_ID

@@ -1,0 +1,1069 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Aido · 你的个人 AI 助理</title>
+  <style>
+    :root {
+      --bg: #0e1621;
+      --bg-soft: #17212b;
+      --bg-card: #1d2733;
+      --line: #2a3a4a;
+      --text: #e6edf3;
+      --muted: #7d8fa3;
+      --accent: #4aa3ff;
+      --accent-2: #2b8aef;
+      --bubble-user: #2b5278;
+      --bubble-bot: #182533;
+      --danger: #ff5d6c;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f4f6f9; --bg-soft: #ffffff; --bg-card: #ffffff;
+        --line: #e3e8ee; --text: #1a2330; --muted: #6c7a8a;
+        --bubble-user: #d6efff; --bubble-bot: #ffffff;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font: 14px/1.55 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg); color: var(--text);
+      display: grid; grid-template-columns: 280px 1fr; height: 100vh;
+    }
+    /* ---------- Sidebar ---------- */
+    aside.sidebar {
+      background: var(--bg-soft); border-right: 1px solid var(--line);
+      display: flex; flex-direction: column; min-height: 0;
+    }
+    .brand {
+      padding: 14px 16px; border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .brand .logo {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), #6a5cff);
+      display: grid; place-items: center; font-weight: 700; color: white;
+    }
+    .brand .name { font-weight: 700; }
+    .brand .sub { font-size: 12px; color: var(--muted); }
+
+    .new-chat {
+      margin: 10px; padding: 9px 12px; border-radius: 8px; cursor: pointer;
+      border: 1px solid var(--line); background: var(--bg-card); color: var(--text);
+      font-weight: 600; text-align: left; display: flex; gap: 8px; align-items: center;
+    }
+    .new-chat:hover { border-color: var(--accent); }
+
+    .section-title { padding: 8px 16px 4px; font-size: 11px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+
+    .quick {
+      padding: 0 8px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;
+    }
+    .quick button {
+      background: var(--bg-card); color: var(--text); border: 1px solid var(--line);
+      padding: 8px; border-radius: 8px; cursor: pointer; font-size: 12.5px;
+      display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+    }
+    .quick button:hover { border-color: var(--accent); }
+    .quick .ico { font-size: 16px; }
+
+    .sessions { flex: 1; overflow: auto; padding: 6px; }
+    .session {
+      padding: 10px 12px; border-radius: 8px; cursor: pointer;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .session:hover { background: var(--bg-card); }
+    .session.active { background: var(--bg-card); }
+    .session .avatar {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: linear-gradient(135deg, #4aa3ff, #6a5cff);
+      display: grid; place-items: center; color: white; font-weight: 700; font-size: 13px;
+    }
+    .session .meta { flex: 1; min-width: 0; }
+    .session .meta .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .session .meta .preview { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .session .del { color: var(--muted); border: 0; background: transparent; cursor: pointer; opacity: 0; }
+    .session:hover .del { opacity: 1; }
+
+    .footer {
+      border-top: 1px solid var(--line); padding: 10px 12px;
+      display: flex; gap: 8px; align-items: center;
+    }
+    .footer input { flex: 1; background: var(--bg-card); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12.5px; }
+    .footer .icon-btn { background: transparent; color: var(--muted); border: 0; padding: 6px; border-radius: 6px; cursor: pointer; font-size: 16px; }
+    .footer .icon-btn:hover { color: var(--text); background: var(--bg-card); }
+
+    /* ---------- Main chat area ---------- */
+    main.chat { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg); }
+    .chat-header {
+      padding: 12px 16px; border-bottom: 1px solid var(--line);
+      background: var(--bg-soft);
+      display: flex; align-items: center; gap: 12px;
+    }
+    .chat-header .avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), #6a5cff);
+      display: grid; place-items: center; color: white; font-weight: 700;
+    }
+    .chat-header .title { font-weight: 700; }
+    .chat-header .status { font-size: 12px; color: var(--muted); }
+    .chat-header .spacer { flex: 1; }
+    .chat-header .icon-btn { background: transparent; color: var(--muted); border: 0; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 18px; }
+    .chat-header .icon-btn:hover { color: var(--text); background: var(--bg-card); }
+
+    .messages {
+      flex: 1; overflow: auto; padding: 22px 22px 12px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .empty {
+      margin: auto; text-align: center; color: var(--muted); max-width: 520px;
+    }
+    .empty .big { font-size: 22px; color: var(--text); margin-bottom: 6px; font-weight: 600; }
+    .empty .examples { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+    .empty .examples button {
+      text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+      background: var(--bg-card); color: var(--text); cursor: pointer;
+    }
+    .empty .examples button:hover { border-color: var(--accent); }
+
+    .row-msg { display: flex; gap: 10px; max-width: 78%; }
+    .row-msg.user { margin-left: auto; flex-direction: row-reverse; }
+    .row-msg .av {
+      width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+      display: grid; place-items: center; font-weight: 700; color: white; font-size: 12px;
+    }
+    .row-msg.user .av { background: #2b8aef; }
+    .row-msg.bot  .av { background: linear-gradient(135deg, var(--accent), #6a5cff); }
+
+    .bubble {
+      padding: 10px 14px; border-radius: 14px; line-height: 1.55;
+      background: var(--bubble-bot); border: 1px solid var(--line);
+      word-break: break-word;
+    }
+    .row-msg.user .bubble { background: var(--bubble-user); border-color: transparent; }
+    .bubble p { margin: .35em 0; }
+    .bubble ul, .bubble ol { padding-left: 1.4em; margin: .4em 0; }
+    .bubble pre { background: rgba(0,0,0,.35); padding: 10px; border-radius: 6px; overflow: auto; }
+    .bubble code { background: rgba(0,0,0,.25); padding: 1px 5px; border-radius: 3px; }
+    .bubble pre code { background: none; padding: 0; }
+    .bubble h1, .bubble h2, .bubble h3 { margin: .6em 0 .25em; }
+    .bubble table { border-collapse: collapse; }
+    .bubble th, .bubble td { border: 1px solid var(--line); padding: 4px 8px; }
+
+    .typing { font-size: 12px; color: var(--muted); padding: 4px 8px; }
+    .typing .dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); margin: 0 1px; animation: blink 1.2s infinite ease-in-out; }
+    .typing .dot:nth-child(2) { animation-delay: .15s; }
+    .typing .dot:nth-child(3) { animation-delay: .3s; }
+    @keyframes blink { 0%,80%,100% { opacity: .25 } 40% { opacity: 1 } }
+
+    /* ---------- Composer ---------- */
+    .composer {
+      border-top: 1px solid var(--line); background: var(--bg-soft);
+      padding: 10px 14px;
+    }
+    .composer .row { display: flex; gap: 8px; align-items: flex-end; }
+    .composer textarea {
+      flex: 1; resize: none; min-height: 42px; max-height: 200px;
+      padding: 10px 12px; border-radius: 18px; border: 1px solid var(--line);
+      background: var(--bg-card); color: var(--text); font: inherit;
+    }
+    .composer textarea:focus { outline: none; border-color: var(--accent); }
+    .composer button.send {
+      background: var(--accent); color: white; border: 0;
+      padding: 0 16px; border-radius: 18px; height: 42px; cursor: pointer; font-weight: 600;
+    }
+    .composer button.send:disabled { opacity: .5; cursor: not-allowed; }
+    .composer .hint { font-size: 11px; color: var(--muted); margin-top: 6px; padding: 0 6px; }
+
+    /* ---------- Drawer (settings/tools) ---------- */
+    .drawer-mask { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; z-index: 50; }
+    .drawer-mask.open { display: block; }
+    .drawer {
+      position: fixed; right: 0; top: 0; bottom: 0; width: 420px; max-width: 92vw;
+      background: var(--bg-soft); border-left: 1px solid var(--line);
+      transform: translateX(100%); transition: transform .2s ease;
+      z-index: 60; display: flex; flex-direction: column;
+    }
+    .drawer.open { transform: translateX(0); }
+    .drawer header { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+    .drawer header .title { font-weight: 700; flex: 1; }
+    .drawer .tabs { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+    .drawer .tabs button { background: transparent; border: 1px solid var(--line); color: var(--text); padding: 5px 10px; border-radius: 999px; cursor: pointer; font-size: 12.5px; }
+    .drawer .tabs button.active { background: var(--accent); color: white; border-color: transparent; }
+    .drawer .body { flex: 1; overflow: auto; padding: 14px 16px; }
+    .drawer .panel { display: none; }
+    .drawer .panel.active { display: block; }
+    .drawer label { display: block; margin: 8px 0 4px; font-size: 12.5px; color: var(--muted); }
+    .drawer input, .drawer textarea, .drawer select {
+      width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+      background: var(--bg-card); color: var(--text); font: inherit;
+    }
+    .drawer button.action { background: var(--accent); color: white; border: 0; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+    .drawer pre.out { background: var(--bg-card); border: 1px solid var(--line); padding: 10px; border-radius: 8px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
+
+    @media (max-width: 760px) {
+      body { grid-template-columns: 1fr; }
+      aside.sidebar { display: none; }
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+</head>
+<body>
+  <!-- ============== Sidebar ============== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">A</div>
+      <div>
+        <div class="name">Aido</div>
+        <div class="sub">你的个人 AI 助理</div>
+      </div>
+    </div>
+
+    <button class="new-chat" onclick="newSession()">＋ 新对话</button>
+
+    <div class="section-title">快捷协同</div>
+    <div class="quick">
+      <button onclick="quick('email')"><span class="ico">📧</span><span>邮件助手</span></button>
+      <button onclick="quick('chat')"><span class="ico">💬</span><span>群聊总结</span></button>
+      <button onclick="quick('calendar')"><span class="ico">📅</span><span>日程编排</span></button>
+      <button onclick="quick('todo')"><span class="ico">✅</span><span>抽取行动项</span></button>
+    </div>
+
+    <div class="section-title">最近会话</div>
+    <div class="sessions" id="sessions"></div>
+
+    <div class="footer">
+      <input id="user-id" placeholder="user_id" />
+      <button class="icon-btn" title="工具与记忆" onclick="openDrawer('tools')">⚙</button>
+    </div>
+  </aside>
+
+  <!-- ============== Main ============== -->
+  <main class="chat">
+    <header class="chat-header">
+      <div class="avatar">A</div>
+      <div>
+        <div class="title" id="chat-title">新对话</div>
+        <div class="status" id="chat-status">在线 · 流式回答</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="icon-btn" title="清空当前对话" onclick="clearCurrent()">🗑</button>
+      <button class="icon-btn" title="工作流 / 记忆 / 运维" onclick="openDrawer('tools')">⚙</button>
+    </header>
+
+    <div class="messages" id="messages"></div>
+
+    <div class="composer">
+      <div class="row">
+        <textarea id="input" rows="1" placeholder="给 Aido 发条消息（Enter 发送 / Shift+Enter 换行）"></textarea>
+        <button class="send" id="send-btn" onclick="sendMessage()">发送</button>
+      </div>
+      <div class="hint" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="agent-mode" style="margin:0;" /> 🤖 Agent 模式（能读/发邮件）
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--danger);">
+          <input type="checkbox" id="agent-allow-send" style="margin:0;" /> 允许真发送
+        </label>
+        <span>邮件草稿 · 日程编排 · 群聊总结 · 任务跟进</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============== Drawer (Tools) ============== -->
+  <div class="drawer-mask" id="drawer-mask" onclick="closeDrawer()"></div>
+  <div class="drawer" id="drawer">
+    <header>
+      <div class="title">工具面板</div>
+      <button class="icon-btn" onclick="closeDrawer()">✕</button>
+    </header>
+    <div class="tabs">
+      <button data-dt="email" class="active" onclick="dtab('email')">📧 邮箱</button>
+      <button data-dt="workflow" onclick="dtab('workflow')">工作流</button>
+      <button data-dt="memory" onclick="dtab('memory')">记忆</button>
+      <button data-dt="ops" onclick="dtab('ops')">运维</button>
+    </div>
+    <div class="body">
+      <!-- Email -->
+      <section class="panel active" data-dp="email">
+        <p style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="action" onclick="emailAccount()">账号状态</button>
+          <button class="action" style="background:#3a4856;" onclick="emailInbox()">最新收件箱</button>
+          <button class="action" style="background:#3a4856;" onclick="emailFolders()">文件夹列表</button>
+        </p>
+        <label>邮箱文件夹（默认 INBOX，QQ 常见：INBOX / Sent Messages / Drafts）</label>
+        <input id="email-mailbox" value="INBOX" />
+
+        <label>关键字搜索（主题/发件人）</label>
+        <p style="display:flex;gap:8px;">
+          <input id="email-q" placeholder="如：发票 / boss@xxx.com" />
+          <button class="action" onclick="emailSearch()">搜索</button>
+        </p>
+
+        <label>查看指定邮件（UID）</label>
+        <p style="display:flex;gap:8px;">
+          <input id="email-uid" placeholder="在收件箱列表里点击邮件会自动填入" />
+          <button class="action" onclick="emailRead()">读取全文</button>
+        </p>
+
+        <p style="display:flex;gap:6px;flex-wrap:wrap;font-size:12px;">
+          <button class="action" style="background:#3a4856;padding:6px 10px;" onclick="emailMarkSeen(true)">✓ 标已读</button>
+          <button class="action" style="background:#3a4856;padding:6px 10px;" onclick="emailMarkSeen(false)">✗ 标未读</button>
+          <button class="action" style="background:#3a4856;padding:6px 10px;" onclick="emailMarkFlag(true)">⭐ 星标</button>
+          <button class="action" style="background:#3a4856;padding:6px 10px;" onclick="emailMarkFlag(false)">☆ 取消星标</button>
+          <button class="action" style="background:#3a4856;padding:6px 10px;" onclick="emailMove()">📁 移动到…</button>
+          <button class="action" style="background:#1f6feb;padding:6px 10px;" onclick="emailViewPermalink()">🔗 打开</button>
+          <button class="action" style="background:#3a4856;padding:6px 10px;" onclick="emailListAttachments()">📎 附件</button>
+          <button class="action" style="background:#1f6feb;padding:6px 10px;" onclick="emailReply(false)">💬 回复</button>
+          <button class="action" style="background:#3a4856;padding:6px 10px;" onclick="emailReply(true)">💬 回复全部</button>
+          <button class="action" style="background:#3a4856;padding:6px 10px;" onclick="emailForward()">📨 转发</button>
+          <button class="action" style="background:#c0392b;padding:6px 10px;" onclick="emailDelete(false)">🗑 删除</button>
+          <button class="action" style="background:#7b241c;padding:6px 10px;" onclick="emailDelete(true)">⚠ 彻底删除</button>
+        </p>
+
+        <hr style="border:0;border-top:1px solid var(--line);margin:14px 0;" />
+
+        <label>✉️ 发送邮件 — 收件人（逗号分隔）</label>
+        <input id="email-to" placeholder="alice@example.com, bob@example.com" />
+        <label>抄送（可选，逗号分隔）</label>
+        <input id="email-cc" placeholder="" />
+        <label>主题</label>
+        <input id="email-subject" placeholder="Aido 测试邮件" />
+        <label>正文</label>
+        <textarea id="email-body" rows="6">来自 Aido 的测试邮件 👋</textarea>
+        <p style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+          <button class="action" onclick="emailSend()">发送</button>
+          <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;">
+            <input type="checkbox" id="email-html" style="width:auto;" /> 按 HTML 发送
+          </label>
+        </p>
+
+        <pre class="out" id="email-out"></pre>
+      </section>
+
+      <!-- Workflow -->
+      <section class="panel" data-dp="workflow">
+        <label>goal</label>
+        <input id="wf-goal" value="整理今天的笔记" />
+        <label>steps (JSON)</label>
+        <textarea id="wf-steps" rows="6">[
+  { "tool": "fetch_notes", "args": { "user_id": "u1" } },
+  { "tool": "summarize",   "args": {} },
+  { "tool": "extract_actions", "args": {} }
+]</textarea>
+        <label>模式</label>
+        <select id="wf-mode"><option value="sync">同步</option><option value="async">异步</option></select>
+        <p style="display:flex;gap:8px;margin-top:10px;">
+          <button class="action" onclick="runWorkflow()">执行</button>
+          <button class="action" style="background:#3a4856;" onclick="listTools()">列出工具</button>
+        </p>
+        <label>workflow_id</label>
+        <input id="wf-id" placeholder="粘贴 workflow_id 后查询" />
+        <p><button class="action" onclick="getWorkflow()">查状态</button></p>
+        <pre class="out" id="wf-out"></pre>
+      </section>
+
+      <!-- Memory -->
+      <section class="panel" data-dp="memory">
+        <label>kind</label>
+        <select id="mem-kind"><option>profile</option><option>fact</option><option>reminder</option></select>
+        <label>content</label>
+        <textarea id="mem-content" rows="3">用户偏好简洁、中文输出</textarea>
+        <p style="display:flex;gap:8px;margin-top:10px;">
+          <button class="action" onclick="addFact()">写入</button>
+          <button class="action" style="background:#3a4856;" onclick="listFacts()">列出</button>
+        </p>
+        <label>检索关键字</label>
+        <input id="mem-q" placeholder="例如：日程 / 邮件" />
+        <p><button class="action" onclick="searchFacts()">检索</button></p>
+        <label>session 摘要</label>
+        <p style="display:flex;gap:8px;">
+          <input id="mem-sid" placeholder="session_id" />
+          <button class="action" onclick="getSummary()">查看</button>
+        </p>
+        <pre class="out" id="mem-out"></pre>
+      </section>
+
+      <!-- Ops -->
+      <section class="panel" data-dp="ops">
+        <p style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="action" onclick="hit('/healthz')">/healthz</button>
+          <button class="action" onclick="hit('/readyz')">/readyz</button>
+          <button class="action" onclick="hit('/metrics', true)">/metrics</button>
+        </p>
+        <pre class="out" id="ops-out"></pre>
+      </section>
+    </div>
+  </div>
+
+<script>
+//========================= 基础 =========================
+const BASE = location.origin.replace(/\/$/, '');
+const LS_KEY = 'aido.sessions.v1';
+const LS_USER = 'aido.user';
+
+let userId = localStorage.getItem(LS_USER) || 'u1';
+document.getElementById('user-id').value = userId;
+document.getElementById('user-id').addEventListener('change', e => {
+  userId = e.target.value || 'u1';
+  localStorage.setItem(LS_USER, userId);
+});
+
+/** sessions: [{id, title, messages:[{role,text}]}] */
+let sessions = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+let activeId = sessions[0]?.id || null;
+
+function persist() { localStorage.setItem(LS_KEY, JSON.stringify(sessions)); }
+
+function uid() { return 's-' + Math.random().toString(36).slice(2, 9); }
+
+function getActive() { return sessions.find(s => s.id === activeId); }
+
+function newSession(title = '新对话') {
+  const s = { id: uid(), title, messages: [] };
+  sessions.unshift(s);
+  activeId = s.id;
+  persist();
+  renderSessions();
+  renderMessages();
+  setTitle(title);
+}
+
+function clearCurrent() {
+  const s = getActive();
+  if (!s) return;
+  if (!confirm('清空当前对话？')) return;
+  s.messages = [];
+  persist();
+  renderMessages();
+}
+
+function deleteSession(id) {
+  sessions = sessions.filter(s => s.id !== id);
+  if (activeId === id) activeId = sessions[0]?.id || null;
+  persist();
+  renderSessions();
+  renderMessages();
+}
+
+function setTitle(t) {
+  document.getElementById('chat-title').textContent = t;
+}
+
+function renderSessions() {
+  const el = document.getElementById('sessions');
+  el.innerHTML = '';
+  for (const s of sessions) {
+    const last = s.messages[s.messages.length - 1];
+    const div = document.createElement('div');
+    div.className = 'session' + (s.id === activeId ? ' active' : '');
+    div.onclick = () => { activeId = s.id; renderSessions(); renderMessages(); setTitle(s.title); };
+    div.innerHTML = `
+      <div class="avatar">${(s.title || 'A').slice(0,1)}</div>
+      <div class="meta">
+        <div class="title"></div>
+        <div class="preview"></div>
+      </div>
+      <button class="del" title="删除">✕</button>`;
+    div.querySelector('.title').textContent = s.title;
+    div.querySelector('.preview').textContent = last ? (last.role === 'user' ? '我：' : '助理：') + last.text.slice(0, 40) : '没有消息';
+    div.querySelector('.del').onclick = (e) => { e.stopPropagation(); deleteSession(s.id); };
+    el.appendChild(div);
+  }
+}
+
+function renderMessages() {
+  const el = document.getElementById('messages');
+  const s = getActive();
+  el.innerHTML = '';
+  if (!s || s.messages.length === 0) {
+    el.innerHTML = `
+      <div class="empty">
+        <div class="big">嗨，我是 Aido 👋</div>
+        <div>我可以帮你处理邮件、群聊、日程，串联各种生产力工具。</div>
+        <div class="examples">
+          <button onclick="quick('email')">📧 起草一封邮件</button>
+          <button onclick="quick('chat')">💬 总结这段聊天记录</button>
+          <button onclick="quick('calendar')">📅 安排明天 2 点的会议</button>
+          <button onclick="quick('todo')">✅ 从这段对话抽取行动项</button>
+        </div>
+      </div>`;
+    return;
+  }
+  for (const m of s.messages) addBubble(m.role, m.text, false);
+}
+
+function addBubble(role, text, scroll = true) {
+  const el = document.getElementById('messages');
+  // 如果首次添加，先清空 empty 占位
+  if (el.querySelector('.empty')) el.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'row-msg ' + (role === 'user' ? 'user' : 'bot');
+  const av = document.createElement('div');
+  av.className = 'av';
+  av.textContent = role === 'user' ? '我' : 'A';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  if (role === 'user') bubble.textContent = text;
+  else renderMd(bubble, text);
+  row.appendChild(av);
+  row.appendChild(bubble);
+  el.appendChild(row);
+  if (scroll) el.scrollTop = el.scrollHeight;
+  return bubble;
+}
+
+function renderMd(el, text) {
+  const html = marked.parse(text || '', { gfm: true, breaks: true });
+  // DOMPurify 允许 target 属性，且给所有外链强制安全打开
+  const clean = DOMPurify.sanitize(html, { ADD_ATTR: ['target', 'rel'] });
+  el.innerHTML = clean;
+  // 链接增强：新标签打开 + 附"复制"按钮
+  el.querySelectorAll('a[href^="http"]').forEach(a => {
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    // 已经有兄弟复制按钮就跳过
+    if (a.nextSibling && a.nextSibling.dataset && a.nextSibling.dataset.copyBtn) return;
+    const btn = document.createElement('button');
+    btn.textContent = '复制';
+    btn.dataset.copyBtn = '1';
+    btn.title = '复制链接: ' + a.href;
+    btn.style.cssText = 'margin-left:6px;padding:0 6px;font-size:11px;line-height:18px;border:1px solid var(--line);background:var(--bg-card);color:var(--muted);border-radius:4px;cursor:pointer;vertical-align:baseline;';
+    btn.onclick = (ev) => {
+      ev.preventDefault();
+      navigator.clipboard.writeText(a.href).then(() => {
+        const old = btn.textContent;
+        btn.textContent = '已复制';
+        setTimeout(() => { btn.textContent = old; }, 1200);
+      });
+    };
+    a.after(btn);
+  });
+}
+
+//========================= 发送消息 =========================
+const input = document.getElementById('input');
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+});
+
+async function sendMessage() {
+  const text = input.value.trim();
+  if (!text) return;
+  if (!activeId) newSession('新对话');
+  const s = getActive();
+
+  // 第一条消息时把会话标题改成它的前 24 个字
+  if (s.messages.length === 0) {
+    s.title = text.slice(0, 24);
+    setTitle(s.title);
+  }
+  s.messages.push({ role: 'user', text });
+  persist();
+  addBubble('user', text);
+  input.value = '';
+  input.style.height = 'auto';
+  renderSessions();
+
+  // typing 占位
+  const messages = document.getElementById('messages');
+  const typing = document.createElement('div');
+  typing.className = 'row-msg bot';
+  typing.innerHTML = '<div class="av">A</div><div class="bubble"><span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span> 思考中</span></div>';
+  messages.appendChild(typing);
+  messages.scrollTop = messages.scrollHeight;
+
+  document.getElementById('send-btn').disabled = true;
+
+  try {
+    const agentMode = document.getElementById('agent-mode').checked;
+    if (agentMode) {
+      await callAgent(s, text, typing);
+    } else {
+      await streamChat(s, text, typing);
+    }
+  } catch (err) {
+    typing.querySelector('.bubble').textContent = '出错了：' + err.message;
+  } finally {
+    document.getElementById('send-btn').disabled = false;
+    persist();
+    renderSessions();
+  }
+}
+
+async function callAgent(session, text, typingEl) {
+  const allowSend = document.getElementById('agent-allow-send').checked;
+  const resp = await fetch(BASE + '/v1/chat/agent/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      user_id: userId,
+      session_id: session.id,
+      message: text,
+      allow_send: allowSend,
+      max_tokens: 1024
+    })
+  });
+  if (!resp.ok || !resp.body) {
+    const errText = await resp.text().catch(() => '');
+    throw new Error('HTTP ' + resp.status + ' ' + errText);
+  }
+
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  let bubble = null;          // 文本气泡（首 token 到达时建立）
+  let tokenAcc = '';          // 流式累计文本
+  let toolLog = null;         // 工具日志卡片
+  const actions = [];
+
+  function ensureBubble() {
+    if (!bubble) {
+      typingEl.querySelector('.bubble').innerHTML = '';
+      bubble = typingEl.querySelector('.bubble');
+    }
+    return bubble;
+  }
+
+  function ensureToolLog() {
+    if (!toolLog) {
+      ensureBubble();
+      toolLog = document.createElement('div');
+      toolLog.style.cssText = 'margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--bg-card);border:1px solid var(--line);font-size:12.5px;color:var(--muted);';
+      toolLog.innerHTML = '<b>工具执行：</b><ul style="margin:4px 0 0 18px;padding:0;list-style:disc;"></ul>';
+      bubble.appendChild(toolLog);
+    }
+    return toolLog.querySelector('ul');
+  }
+
+  function iconFor(name) {
+    if (name === 'email_send') return '📤';
+    if (name === 'email_delete') return '🗑';
+    if (name === 'email_search' || name === 'email_list_inbox') return '🔍';
+    if (name === 'email_read') return '📖';
+    if (name.startsWith('email_mark') || name === 'email_move') return '🔧';
+    return '⚙';
+  }
+
+  function pushToolEvent(ev) {
+    const ul = ensureToolLog();
+    if (ev._kind === 'start') {
+      const li = document.createElement('li');
+      li.dataset.callKey = ev.key;
+      li.innerHTML = `${iconFor(ev.name)} <b>${ev.name}</b>(${escapeHtml(JSON.stringify(ev.args))}) <span style="color:#888">运行中…</span>`;
+      ul.appendChild(li);
+    } else {
+      const li = ul.querySelector(`li[data-call-key="${ev.key}"]`);
+      const status = ev.ok
+        ? '<span style="color:#1a7f37">✓ 完成</span>'
+        : `<span style="color:#cf222e">✗ ${escapeHtml(ev.error || '失败')}</span>`;
+      if (li) li.innerHTML = `${iconFor(ev.name)} <b>${ev.name}</b>(${escapeHtml(JSON.stringify(ev.args))}) ${status}`;
+    }
+    document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // start 事件按 (name + iter + 序号) 标识，end 配对回填
+  const callKeysByIter = {};
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let sep;
+    while ((sep = buf.indexOf('\n\n')) !== -1) {
+      const frame = buf.slice(0, sep);
+      buf = buf.slice(sep + 2);
+      let event = 'message';
+      const dataLines = [];
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
+      }
+      const raw = dataLines.join('\n');
+      let data = {};
+      try { data = raw ? JSON.parse(raw) : {}; } catch { data = { _raw: raw }; }
+
+      if (event === 'token') {
+        ensureBubble();
+        tokenAcc += data.text || '';
+        renderMd(bubble, tokenAcc);
+        document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+      } else if (event === 'tool_start') {
+        const key = data.name + '#' + data.iter + '#' + ((callKeysByIter[data.iter] = (callKeysByIter[data.iter]||0) + 1));
+        data._lastKey = key;
+        pushToolEvent({ _kind: 'start', key, name: data.name, args: data.args, iter: data.iter });
+        // 把 key 暂存到 actions 里的占位
+        actions.push({ key, name: data.name, args: data.args });
+      } else if (event === 'tool_end') {
+        // 找最近一个同名且未完成的
+        const slot = [...actions].reverse().find(a => a.name === data.name && a._done !== true);
+        const key = slot ? slot.key : (data.name + '#?');
+        if (slot) { slot._done = true; slot.ok = data.ok; slot.error = data.error; slot.result = data.result; }
+        pushToolEvent({ _kind: 'end', key, name: data.name, ok: data.ok, error: data.error });
+      } else if (event === 'tool_blocked') {
+        const ul = ensureToolLog();
+        const li = document.createElement('li');
+        li.innerHTML = `🚫 <b>${data.name}</b> 被拒绝：${escapeHtml(data.reason || '')}（勾选"允许真发送"后重试）`;
+        ul.appendChild(li);
+      } else if (event === 'done') {
+        // 服务器给出最终文本（可能比 token 累计的更完整，例如多轮间的中间 reasoning）
+        if (data.text) {
+          ensureBubble();
+          // 把工具日志暂时摘出来，重新渲染正文后再贴回去
+          const log = toolLog;
+          if (log) log.remove();
+          tokenAcc = data.text;
+          renderMd(bubble, tokenAcc);
+          if (log) bubble.appendChild(log);
+        }
+      } else if (event === 'error') {
+        ensureBubble();
+        bubble.innerHTML = `<span style="color:#cf222e">出错：${escapeHtml(data.message || '')}</span>`;
+      }
+      // end 事件不需要在 UI 上做事
+    }
+  }
+
+  if (!bubble) {
+    typingEl.querySelector('.bubble').textContent = '（无回复）';
+    tokenAcc = '（无回复）';
+  }
+  session.messages.push({ role: 'assistant', text: tokenAcc });
+  document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+}
+
+async function streamChat(session, text, typingEl) {
+  const body = {
+    user_id: userId,
+    session_id: session.id,
+    message: text,
+    max_tokens: 1024
+  };
+  const resp = await fetch(BASE + '/v1/chat/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
+
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  let acc = '';
+  let bubble = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let sep;
+    while ((sep = buf.indexOf('\n\n')) !== -1) {
+      const frame = buf.slice(0, sep);
+      buf = buf.slice(sep + 2);
+      let event = 'message';
+      const dataLines = [];
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
+      }
+      const data = dataLines.join('\n');
+      if (event === 'token') {
+        if (!bubble) {
+          // 首个 token：把 "思考中" 替换为正式 bubble
+          typingEl.querySelector('.bubble').innerHTML = '';
+          bubble = typingEl.querySelector('.bubble');
+        }
+        acc += data;
+        renderMd(bubble, acc);
+        document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+      }
+    }
+  }
+  if (!acc) {
+    typingEl.querySelector('.bubble').textContent = '（无回复）';
+    acc = '（无回复）';
+  }
+  session.messages.push({ role: 'assistant', text: acc });
+}
+
+//========================= 快捷协同 =========================
+function quick(kind) {
+  const presets = {
+    email: '帮我起草一封邮件：主题、正文要专业且简洁。先问我收件人和要表达的核心信息。',
+    chat:  '我把一段聊天记录贴给你，请帮我总结：关键决策、待办、需要回复的人。',
+    calendar: '我要在本周安排一次 30 分钟的同步会，请给我一份会议邀请草稿（标题、议程、时长建议）。',
+    todo: '从我们最近的对话中抽取所有行动项，按"负责人 / 截止时间 / 内容"的表格列出来。'
+  };
+  input.value = presets[kind] || '';
+  input.focus();
+  input.dispatchEvent(new Event('input'));
+}
+
+//========================= Drawer 工具面板 =========================
+function openDrawer(){ document.getElementById('drawer').classList.add('open'); document.getElementById('drawer-mask').classList.add('open'); }
+function closeDrawer(){ document.getElementById('drawer').classList.remove('open'); document.getElementById('drawer-mask').classList.remove('open'); }
+function dtab(name){
+  document.querySelectorAll('.drawer .tabs button').forEach(b => b.classList.toggle('active', b.dataset.dt === name));
+  document.querySelectorAll('.drawer .panel').forEach(p => p.classList.toggle('active', p.dataset.dp === name));
+}
+
+async function runWorkflow() {
+  const body = {
+    user_id: userId,
+    goal: document.getElementById('wf-goal').value,
+    steps: JSON.parse(document.getElementById('wf-steps').value)
+  };
+  const mode = document.getElementById('wf-mode').value;
+  const url = BASE + (mode === 'async' ? '/v1/workflows/async' : '/v1/workflows');
+  const r = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const data = await r.json();
+  document.getElementById('wf-out').textContent = JSON.stringify(data, null, 2);
+  if (data.workflow_id) document.getElementById('wf-id').value = data.workflow_id;
+}
+async function listTools(){ const r = await fetch(BASE + '/v1/workflows/tools'); document.getElementById('wf-out').textContent = JSON.stringify(await r.json(), null, 2); }
+async function getWorkflow(){ const id = document.getElementById('wf-id').value.trim(); if (!id) return; const r = await fetch(BASE + '/v1/workflows/' + id); document.getElementById('wf-out').textContent = JSON.stringify(await r.json(), null, 2); }
+
+async function addFact(){ const body = { user_id: userId, kind: document.getElementById('mem-kind').value, content: document.getElementById('mem-content').value }; const r = await fetch(BASE + '/v1/memory/facts', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) }); document.getElementById('mem-out').textContent = JSON.stringify(await r.json(), null, 2); }
+async function listFacts(){ const r = await fetch(BASE + '/v1/memory/facts?user_id=' + encodeURIComponent(userId)); document.getElementById('mem-out').textContent = JSON.stringify(await r.json(), null, 2); }
+async function searchFacts(){ const q = document.getElementById('mem-q').value; const r = await fetch(BASE + '/v1/memory/facts/search?user_id=' + encodeURIComponent(userId) + '&q=' + encodeURIComponent(q)); document.getElementById('mem-out').textContent = JSON.stringify(await r.json(), null, 2); }
+async function getSummary(){ const sid = document.getElementById('mem-sid').value || (getActive()?.id || ''); const r = await fetch(BASE + '/v1/memory/summaries/' + encodeURIComponent(sid)); document.getElementById('mem-out').textContent = JSON.stringify(await r.json(), null, 2); }
+async function hit(path, asText){ const r = await fetch(BASE + path); document.getElementById('ops-out').textContent = asText ? await r.text() : JSON.stringify(await r.json(), null, 2); }
+
+//========================= 📧 邮箱面板 =========================
+function emailOut(obj){ document.getElementById('email-out').textContent = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2); }
+
+async function emailAccount(){
+  try {
+    const r = await fetch(BASE + '/v1/email/account');
+    emailOut(await r.json());
+  } catch(e){ emailOut('错误：' + e.message); }
+}
+
+async function emailInbox(){
+  emailOut('加载中…');
+  try {
+    const mb = (document.getElementById('email-mailbox').value || 'INBOX').trim();
+    const r = await fetch(BASE + '/v1/email/inbox?limit=10&mailbox=' + encodeURIComponent(mb));
+    const data = await r.json();
+    if (!r.ok) return emailOut(data);
+    const list = data.emails || data.messages || [];
+    if (list.length === 0) return emailOut('[' + mb + '] 收件箱为空。\n如果邮件箱里明明有邮件，请点「文件夹列表」看实际可用的名字。');
+    const lines = list.map(m =>
+      `[UID ${m.uid}] ${m.date || ''}\n  来自: ${m.from_ || ''}\n  主题: ${m.subject || '(无主题)'}\n`
+    );
+    emailOut('鼠标选中任意 UID 数字即可填入下方「查看指定邮件」框\n\n' + lines.join('\n'));
+    document.getElementById('email-out').onclick = (ev) => {
+      const sel = window.getSelection().toString().trim();
+      if (/^\d+$/.test(sel)) document.getElementById('email-uid').value = sel;
+    };
+  } catch(e){ emailOut('错误：' + e.message); }
+}
+
+async function emailFolders(){
+  emailOut('加载中…');
+  try {
+    const r = await fetch(BASE + '/v1/email/folders');
+    const data = await r.json();
+    if (!r.ok) return emailOut(data);
+    emailOut('可用文件夹（点击上方「邮箱文件夹」输入框复制一个进去再点「最新收件箱」）\n\n' + (data.folders || []).map(f => '  - ' + f).join('\n'));
+  } catch(e){ emailOut('错误：' + e.message); }
+}
+
+async function emailSearch(){
+  const q = document.getElementById('email-q').value.trim();
+  if (!q) return emailOut('请先填关键字');
+  emailOut('搜索中…');
+  try {
+    const r = await fetch(BASE + '/v1/email/search?limit=10&q=' + encodeURIComponent(q));
+    const data = await r.json();
+    if (!r.ok) return emailOut(data);
+    const list = data.emails || data.messages || [];
+    if (list.length === 0) return emailOut('没有命中结果。\nQQ 不支持 IMAP UTF-8 SEARCH，中文关键字会本地过滤最近 200 封。');
+    const lines = list.map(m =>
+      `[UID ${m.uid}] ${m.date || ''}\n  来自: ${m.from_ || m.sender || ''}\n  主题: ${m.subject || '(无主题)'}\n`
+    );
+    emailOut(lines.join('\n'));
+  } catch(e){ emailOut('错误：' + e.message); }
+}
+
+async function emailRead(){
+  const uid = document.getElementById('email-uid').value.trim();
+  if (!uid) return emailOut('请填 UID');
+  emailOut('读取中…');
+  try {
+    const r = await fetch(BASE + '/v1/email/messages/' + encodeURIComponent(uid));
+    const data = await r.json();
+    if (!r.ok) return emailOut(data);
+    emailOut(
+      `UID: ${data.uid}\n日期: ${data.date || ''}\n发件人: ${data.from_ || data.sender || ''}\n收件人: ${data.to || ''}\n抄送: ${data.cc || ''}\n主题: ${data.subject || '(无主题)'}\n\n------- 正文 -------\n${data.body || ''}`
+    );
+  } catch(e){ emailOut('错误：' + e.message); }
+}
+
+async function emailSend(){
+  const to = document.getElementById('email-to').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const cc = document.getElementById('email-cc').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const subject = document.getElementById('email-subject').value.trim();
+  const body = document.getElementById('email-body').value;
+  const html = document.getElementById('email-html').checked;
+  if (to.length === 0) return emailOut('请填收件人');
+  if (!subject) return emailOut('请填主题');
+  emailOut('发送中…');
+  try {
+    const r = await fetch(BASE + '/v1/email/send', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ to, cc: cc.length ? cc : undefined, subject, body, html })
+    });
+    const data = await r.json();
+    emailOut(r.ok ? '✅ 已发送\n\n' + JSON.stringify(data, null, 2) : data);
+  } catch(e){ emailOut('错误：' + e.message); }
+}
+
+function _uidOrWarn(){
+  const uid = document.getElementById('email-uid').value.trim();
+  if (!uid) { emailOut('请先填 UID'); return null; }
+  return uid;
+}
+
+function _mailbox(){
+  return (document.getElementById('email-mailbox').value || 'INBOX').trim();
+}
+
+async function emailMarkSeen(seen){
+  const uid = _uidOrWarn(); if (!uid) return;
+  emailOut((seen ? '标已读' : '标未读') + ' 中…');
+  try {
+    const r = await fetch(BASE + '/v1/email/messages/' + encodeURIComponent(uid) + '/seen?seen=' + seen + '&mailbox=' + encodeURIComponent(_mailbox()), { method:'PATCH' });
+    emailOut(await r.json());
+  } catch(e){ emailOut('错误：' + e.message); }
+}
+
+async function emailMarkFlag(flagged){
+  const uid = _uidOrWarn(); if (!uid) return;
+  emailOut((flagged ? '加星标' : '取消星标') + ' 中…');
+  try {
+    const r = await fetch(BASE + '/v1/email/messages/' + encodeURIComponent(uid) + '/flag?flagged=' + flagged + '&mailbox=' + encodeURIComponent(_mailbox()), { method:'PATCH' });
+    emailOut(await r.json());
+  } catch(e){ emailOut('错误：' + e.message); }
+}
+
+async function emailMove(){
+  const uid = _uidOrWarn(); if (!uid) return;
+  const dest = prompt('移动到哪个文件夹？\n（可先点「文件夹列表」查看所有可用名）', 'Archive');
+  if (!dest) return;
+  emailOut('移动中…');
+  try {
+    const r = await fetch(BASE + '/v1/email/messages/' + encodeURIComponent(uid) + '/move', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ dest_mailbox: dest, mailbox: _mailbox() })
+    });
+    emailOut(await r.json());
+  } catch(e){ emailOut('错误：' + e.message); }
+}
+
+async function emailDelete(hard){
+  const uid = _uidOrWarn(); if (!uid) return;
+  const warn = hard
+    ? '⚠ 彻底删除 UID=' + uid + ' ？此操作不可恢复！'
+    : '删除 UID=' + uid + ' ？（会移到回收站，可恢复）';
+  if (!confirm(warn)) return;
+  emailOut('删除中…');
+  try {
+    const r = await fetch(BASE + '/v1/email/messages/' + encodeURIComponent(uid) + '?mailbox=' + encodeURIComponent(_mailbox()) + '&hard=' + hard, { method:'DELETE' });
+    emailOut(await r.json());
+  } catch(e){ emailOut('错误：' + e.message); }
+}
+
+function emailViewPermalink(){
+  const uid = _uidOrWarn(); if (!uid) return;
+  const url = BASE + '/v1/email/messages/' + encodeURIComponent(uid) + '/view?mailbox=' + encodeURIComponent(_mailbox());
+  window.open(url, '_blank', 'noopener');
+}
+
+async function emailListAttachments(){
+  const uid = _uidOrWarn(); if (!uid) return;
+  emailOut('读取附件列表中…');
+  try {
+    const r = await fetch(BASE + '/v1/email/messages/' + encodeURIComponent(uid) + '/attachments?mailbox=' + encodeURIComponent(_mailbox()));
+    const data = await r.json();
+    if (!r.ok) return emailOut(data);
+    const list = data.attachments || [];
+    if (list.length === 0) return emailOut('该邮件没有附件');
+    const lines = list.map(a => {
+      const url = BASE + '/v1/email/messages/' + encodeURIComponent(uid) + '/attachments/' + encodeURIComponent(a.part_id) + '?mailbox=' + encodeURIComponent(_mailbox());
+      return `📎 ${a.filename}  (${a.mime}, ${a.size}B)\n   下载: ${url}`;
+    });
+    emailOut(`共 ${list.length} 个附件（点击下面链接下载）：\n\n` + lines.join('\n\n'));
+  } catch(e){ emailOut('错误：' + e.message); }
+}
+
+async function emailReply(replyAll){
+  const uid = _uidOrWarn(); if (!uid) return;
+  const body = prompt((replyAll ? '回复全部' : '回复') + ' UID=' + uid + '\n\n请输入回复正文（引文会自动追加）:', '');
+  if (body === null) return;  // cancel
+  if (!confirm((replyAll ? '回复全部' : '回复') + ' UID=' + uid + ' 给原发件人？\n（这会真的发邮件！）')) return;
+  emailOut('回复发送中…');
+  try {
+    const r = await fetch(BASE + '/v1/email/messages/' + encodeURIComponent(uid) + '/reply', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ body, reply_all: !!replyAll, mailbox: _mailbox(), include_quote: true })
+    });
+    const data = await r.json();
+    emailOut(r.ok ? '✅ 已回复\n\n' + JSON.stringify(data, null, 2) : data);
+  } catch(e){ emailOut('错误：' + e.message); }
+}
+
+async function emailForward(){
+  const uid = _uidOrWarn(); if (!uid) return;
+  const toRaw = prompt('转发 UID=' + uid + '\n\n转发给（多个用逗号分隔）:', '');
+  if (!toRaw) return;
+  const to = toRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  if (to.length === 0) return;
+  const prefix = prompt('要附加在转发前面的说明文字（可留空）:', '') || '';
+  if (!confirm('转发给：' + to.join(', ') + ' ？\n（这会真的发邮件！）')) return;
+  emailOut('转发发送中…');
+  try {
+    const r = await fetch(BASE + '/v1/email/messages/' + encodeURIComponent(uid) + '/forward', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ to, body_prefix: prefix, mailbox: _mailbox(), include_quote: true })
+    });
+    const data = await r.json();
+    emailOut(r.ok ? '✅ 已转发\n\n' + JSON.stringify(data, null, 2) : data);
+  } catch(e){ emailOut('错误：' + e.message); }
+}
+
+//========================= 侧栏「邮件助手」直接打开邮箱面板 =========================
+const _origQuick = quick;
+quick = function(kind){
+  if (kind === 'email') {
+    openDrawer();
+    dtab('email');
+    emailAccount();
+    return;
+  }
+  _origQuick(kind);
+};
+
+//========================= 启动 =========================
+if (sessions.length === 0) newSession('与 Aido 的对话');
+renderSessions();
+renderMessages();
+setTitle(getActive()?.title || '新对话');
+</script>
+</body>
+</html>

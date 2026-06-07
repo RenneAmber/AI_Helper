@@ -1,0 +1,76 @@
+# =============================================================================
+# Kubernetes Deployment：声明“我要 N 个一样的 Pod 跑这个镜像”
+# 关键点：副本数、镜像、端口、资源限制、健康探针、环境变量
+# =============================================================================
+
+apiVersion: apps/v1                # Deployment 用 apps/v1
+kind: Deployment
+metadata:
+  name: proactive-ai-backend       # 资源在集群内的唯一名字
+  labels:
+    app: proactive-ai-backend      # 元数据标签，便于运维筛选
+spec:
+  # 期望副本数：K8s 会持续维持 2 个 Pod，挂掉一个会自动重建一个
+  replicas: 2
+
+  # selector 告诉 Deployment 它要管理哪些 Pod。
+  # 必须与下面 template.metadata.labels 完全匹配，否则会创建失败。
+  selector:
+    matchLabels:
+      app: proactive-ai-backend
+
+  # template 是 Pod 模板：每个副本都按这个规格创建
+  template:
+    metadata:
+      labels:
+        app: proactive-ai-backend  # 这里的 label 必须与 selector 匹配
+    spec:
+      containers:
+        - name: api                # 容器名（一个 Pod 内可以有多个容器）
+          image: proactive-ai-backend:latest
+          # imagePullPolicy:
+          #   Always       —— 每次都拉，适合 :latest 但慢
+          #   IfNotPresent —— 本地有就不拉，适合稳定 tag 或本地构建
+          #   Never        —— 不拉，纯本地（kind/minikube 调试常用）
+          imagePullPolicy: IfNotPresent
+
+          # 声明容器监听的端口，便于 Service 通过 targetPort 找到它
+          ports:
+            - containerPort: 8100
+
+          # 环境变量：进入容器后通过 os.getenv 读取
+          # 与 config.py 中的字段名（大写）对应；不在这里设的字段走代码默认值
+          env:
+            - name: APP_ENV
+              value: "prod"
+            - name: PROVIDER
+              value: "mock"
+
+          # 资源调度：
+          # requests 是 K8s 调度时给 Pod 预留的最小资源
+          # limits 是容器实际能用到的上限，超 CPU 会被节流，超内存会被 OOMKill
+          resources:
+            requests:
+              cpu: "200m"          # 200 milliCPU = 0.2 核
+              memory: "256Mi"
+            limits:
+              cpu: "1"             # 最多 1 核
+              memory: "1Gi"
+
+          # readinessProbe：判定“是否可以接收流量”
+          # 失败时 Pod 会被从 Service 后端摘掉，但不会被重启
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8100
+            initialDelaySeconds: 3 # 起 Pod 后等 3 秒再开始探
+            periodSeconds: 5       # 每 5 秒探一次
+
+          # livenessProbe：判定“进程是否还活着”
+          # 失败会触发 K8s 杀掉容器并重启
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8100
+            initialDelaySeconds: 10
+            periodSeconds: 10
