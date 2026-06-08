@@ -14,9 +14,21 @@ Prompt 拼装器：把不同层级的记忆合并成一份给模型的最终 pro
 
 from __future__ import annotations
 
+import logging
+
 from .config import settings
 from .memory import load_history
 from .semantic_store import load_latest_summary, search_facts
+
+# RAG 是可选模块；导入失败时降级为「无 RAG」，绝不阻断 prompt 拼装
+try:
+    from .rag import service as _rag_service  # noqa: F401
+    _RAG_AVAILABLE = True
+except Exception:  # pragma: no cover - 兜底
+    _rag_service = None  # type: ignore[assignment]
+    _RAG_AVAILABLE = False
+
+_log = logging.getLogger("prompt_builder")
 
 
 SYSTEM_PROMPT = (
@@ -46,6 +58,51 @@ async def build_prompt(*, session_id: str, user_id: str, user_message: str) -> s
     if facts:
         bullet = "\n".join(f"- [{f['kind']}] {f['content']}" for f in facts)
         parts.append(f"semantic_memory:\n{bullet}")
+
+    # ---- RAG：邮件等长文向量检索；默认关闭，开启后单次失败不影响主流程 ----
+    if not settings.rag_enabled:
+        try:
+            from .metrics import rag_prompt_injections_total
+            rag_prompt_injections_total.labels(embedder="-", outcome="disabled").inc()
+        except Exception:
+            pass
+    elif _RAG_AVAILABLE and _rag_service is not None:
+        from .metrics import rag_prompt_injections_total
+        from .rag.embeddings import get_embedder
+        embedder_name = "unknown"
+        try:
+            embedder = await get_embedder()
+            embedder_name = embedder.name
+            hits = await _rag_service.search(
+                user_id=user_id,
+                query=user_message,
+                top_k=settings.rag_top_k,
+            )
+            rag_block = _rag_service.format_as_context(hits)
+            if rag_block:
+                parts.append(f"retrieved_context:\n{rag_block}")
+                rag_prompt_injections_total.labels(embedder=embedder_name, outcome="injected").inc()
+                # 成功注入也要服务器日志可见，方便以后以 trace_id grep 排查
+                _log.info(
+                    "rag_injected",
+                    extra={
+                        "user_id": user_id,
+                        "session_id": session_id,
+                        "embedder": embedder_name,
+                        "hits": len(hits),
+                        "top_score": round(hits[0].score, 4) if hits else None,
+                        "chars": len(rag_block),
+                    },
+                )
+            else:
+                rag_prompt_injections_total.labels(embedder=embedder_name, outcome="empty").inc()
+                _log.info(
+                    "rag_empty",
+                    extra={"user_id": user_id, "session_id": session_id, "embedder": embedder_name},
+                )
+        except Exception as exc:  # pragma: no cover - 兜底
+            rag_prompt_injections_total.labels(embedder=embedder_name, outcome="error").inc()
+            _log.warning("rag_inject_failed", extra={"err": str(exc), "embedder": embedder_name})
 
     if summary:
         parts.append(f"session_summary:\n{summary['summary']}")

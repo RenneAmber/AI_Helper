@@ -20,6 +20,10 @@ from .routers.ops import router as ops_router
 from .routers.workflows import router as workflows_router
 from .routers.email import router as email_router
 from .routers.agent import router as agent_router
+from .routers.incidents import router as incidents_router
+from .routers.rag import router as rag_router
+from .routers.calendar import router as calendar_router
+from .routers.auth_msgraph import router as auth_msgraph_router
 from .tracing import setup_tracing
 from .workflow import start_workers
 
@@ -34,6 +38,10 @@ app.include_router(workflows_router)
 app.include_router(memory_router)
 app.include_router(email_router)
 app.include_router(agent_router)
+app.include_router(incidents_router)
+app.include_router(rag_router)
+app.include_router(calendar_router)
+app.include_router(auth_msgraph_router)
 
 # OpenTelemetry：仅在配置了 OTLP_ENDPOINT 时启用
 setup_tracing(app)

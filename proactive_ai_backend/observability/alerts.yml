@@ -1,0 +1,75 @@
+# Aido 后端 SLO 告警规则。
+# 每条规则带 severity / runbook label 供 Alertmanager 路由。
+# 仅声明规则；演示场景没有接 Alertmanager，命中后在 Prometheus /alerts 页面能看到。
+
+groups:
+  - name: aido.api.slo
+    interval: 15s
+    rules:
+      # —— HTTP 黄金信号 ——
+      - alert: HighP99HttpLatency
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le, path) (rate(http_request_duration_seconds_bucket[2m]))
+          ) > 5
+        for: 2m
+        labels: { severity: warning, runbook: "scale-out or check provider" }
+        annotations:
+          summary: "API p99 > 5s on {{ $labels.path }}"
+          description: "p99 latency = {{ $value }}s on path {{ $labels.path }} for >2m"
+
+      - alert: HttpErrorRateHigh
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[2m]))
+            / sum(rate(http_requests_total[2m])) > 0.05
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "5xx error rate > 5%"
+          description: "5xx ratio = {{ $value | humanizePercentage }}"
+
+  - name: aido.agent.reliability
+    interval: 15s
+    rules:
+      # —— Agent 工具调用错误率（任意一个工具 > 10% 触发）——
+      - alert: AgentToolErrorRateHigh
+        expr: |
+          sum by (tool) (rate(agent_tool_calls_total{status="error"}[2m]))
+            / clamp_min(sum by (tool) (rate(agent_tool_calls_total[2m])), 0.001) > 0.10
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "Tool {{ $labels.tool }} error ratio > 10%"
+          description: "Check integration / network / provider"
+
+      # —— 熔断器持续打开 ——
+      - alert: CircuitBreakerOpen
+        expr: max by (name) (circuit_breaker_state) >= 2
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "Circuit breaker [{{ $labels.name }}] is OPEN > 1m"
+          description: "Downstream of {{ $labels.name }} is being shielded; investigate."
+
+  - name: aido.workflow
+    interval: 15s
+    rules:
+      # —— 工作流失败率突增 ——
+      - alert: WorkflowFailureRateHigh
+        expr: |
+          sum(rate(workflow_runs_total{status="failed"}[5m]))
+            / clamp_min(sum(rate(workflow_runs_total[5m])), 0.001) > 0.20
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Workflow failure ratio > 20% over 5m"
+
+      # —— 队列堆积（异步任务积压）——
+      - alert: WorkflowQueueBacklog
+        expr: workflow_queue_depth > 50
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Workflow queue depth {{ $value }} for >5m"
+          description: "Workers may be undersized; consider increasing WORKFLOW_WORKERS"

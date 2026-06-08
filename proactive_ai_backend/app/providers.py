@@ -74,6 +74,20 @@ def _maybe_temperature(req: "InferenceRequest") -> dict:
     return {"temperature": req.temperature} if req.temperature is not None else {}
 
 
+# GPT-5 / o1 / o3 / o4 等 "reasoning" 家族在 chat.completions 接口里
+# 只接受 max_completion_tokens；老的 gpt-4 / gpt-4o 仍只认 max_tokens。
+# 同时传两个会被服务端拒。这里按 deployment / model 名字段路由一下。
+_NEW_TOKEN_PARAM_PATTERNS = ("gpt-5", "gpt5", "o1", "o3", "o4")
+
+
+def _token_kwargs(model_or_deployment: str, n: int) -> dict:
+    """根据模型/部署名挑选正确的 token 上限参数名。"""
+    name = (model_or_deployment or "").lower()
+    if any(p in name for p in _NEW_TOKEN_PARAM_PATTERNS):
+        return {"max_completion_tokens": n}
+    return {"max_tokens": n}
+
+
 @dataclass
 class InferenceResponse:
     text: str
@@ -140,7 +154,7 @@ class OpenAIProvider:
         resp = await self._client.chat.completions.create(
             model=self._model,
             messages=[{"role": "user", "content": req.prompt}],
-            max_tokens=req.max_tokens,
+            **_token_kwargs(self._model, req.max_tokens),
             **_maybe_temperature(req),
         )
         choice = resp.choices[0]
@@ -160,7 +174,7 @@ class OpenAIProvider:
         stream = await self._client.chat.completions.create(
             model=self._model,
             messages=[{"role": "user", "content": req.prompt}],
-            max_tokens=req.max_tokens,
+            **_token_kwargs(self._model, req.max_tokens),
             stream=True,
             **_maybe_temperature(req),
         )
@@ -183,7 +197,7 @@ class OpenAIProvider:
             messages=messages,
             tools=tools,
             tool_choice="auto",
-            max_tokens=max_tokens,
+            **_token_kwargs(self._model, max_tokens),
         )
 
     async def chat_with_tools_stream(
@@ -199,7 +213,7 @@ class OpenAIProvider:
             messages=messages,
             tools=tools or None,
             tool_choice="auto" if tools else None,
-            max_tokens=max_tokens,
+            **_token_kwargs(self._model, max_tokens),
             stream=True,
         )
         async for chunk in stream:
@@ -211,7 +225,7 @@ class OpenAIProvider:
 #   AZURE_OPENAI_API_KEY
 #   AZURE_OPENAI_ENDPOINT  (或 AZURE_OPENAI_API_ENDPOINT，二者任一即可)
 #   AZURE_OPENAI_API_VERSION  (默认 2025-01-01-preview)
-#   AZURE_OPENAI_DEPLOYMENT   (chat 部署名，例如 gpt-41_milky)
+#   AZURE_OPENAI_DEPLOYMENT   (chat 部署名，例如 gpt-5.4-mini)
 # 实际向 Azure 发请求时 `model` 字段填的是部署名 (deployment)，不是模型名。
 
 class AzureOpenAIProvider:
@@ -231,7 +245,7 @@ class AzureOpenAIProvider:
             "AZURE_OPENAI_API_VERSION", "2025-01-01-preview"
         )
         deployment = settings.azure_openai_deployment or os.getenv(
-            "AZURE_OPENAI_DEPLOYMENT", "gpt-41_milky"
+            "AZURE_OPENAI_DEPLOYMENT", "gpt-5.4-mini"
         )
 
         if not api_key or not endpoint:
@@ -257,7 +271,7 @@ class AzureOpenAIProvider:
         resp = await self._client.chat.completions.create(
             model=self._deployment,  # Azure 这里传 deployment 名
             messages=[{"role": "user", "content": req.prompt}],
-            max_tokens=req.max_tokens,
+            **_token_kwargs(self._deployment, req.max_tokens),
             **_maybe_temperature(req),
         )
         choice = resp.choices[0]
@@ -277,7 +291,7 @@ class AzureOpenAIProvider:
         stream = await self._client.chat.completions.create(
             model=self._deployment,
             messages=[{"role": "user", "content": req.prompt}],
-            max_tokens=req.max_tokens,
+            **_token_kwargs(self._deployment, req.max_tokens),
             stream=True,
             **_maybe_temperature(req),
         )
@@ -298,7 +312,7 @@ class AzureOpenAIProvider:
             messages=messages,
             tools=tools,
             tool_choice="auto",
-            max_tokens=max_tokens,
+            **_token_kwargs(self._deployment, max_tokens),
         )
 
     async def chat_with_tools_stream(
@@ -313,7 +327,7 @@ class AzureOpenAIProvider:
             messages=messages,
             tools=tools or None,
             tool_choice="auto" if tools else None,
-            max_tokens=max_tokens,
+            **_token_kwargs(self._deployment, max_tokens),
             stream=True,
         )
         async for chunk in stream:

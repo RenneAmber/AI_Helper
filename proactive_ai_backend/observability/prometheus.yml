@@ -1,0 +1,26 @@
+# Prometheus 抓取配置：每 5s 拉一次后端的 /metrics 与自身。
+# 告警规则从 alerts.yml 加载。
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels:
+    cluster: aido-local
+    env: dev
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  # 后端进程暴露的 /metrics
+  - job_name: aido-backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8100"]
+        labels:
+          service: proactive-ai-backend
+
+  # Prometheus 自己
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

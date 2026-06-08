@@ -17,19 +17,29 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, EmailStr, Field
 
 from ..integrations.email_accounts import PRESETS, get_default_account
+from ..integrations.email_factory import get_account_for_status, get_email_client
 from ..integrations.email_imap import EmailClient, OutgoingAttachment
 
 router = APIRouter(prefix="/v1/email", tags=["email"])
 
 
 def _client_or_400() -> EmailClient:
-    account = get_default_account()
+    """返回当前后端的 email 客户端（IMAP 或 Graph）。
+
+    类型注解仍写 `EmailClient` 是为了少改下游代码——`EmailGraphClient`
+    与它接口同构，鸭子类型可用，不会真正违反契约。
+    """
+    account = get_account_for_status()
     if not account.configured:
         raise HTTPException(
             status_code=400,
-            detail="Email account not configured. Set EMAIL_PROVIDER / EMAIL_ADDRESS / EMAIL_PASSWORD env vars.",
+            detail=(
+                "Email account not configured. "
+                "Set EMAIL_PROVIDER / EMAIL_ADDRESS / EMAIL_PASSWORD for IMAP, "
+                "or set EMAIL_BACKEND=msgraph for Microsoft Graph."
+            ),
         )
-    return EmailClient(account)
+    return get_email_client()
 
 
 class AttachmentInput(BaseModel):
@@ -81,8 +91,10 @@ class ForwardRequest(BaseModel):
 @router.get("/account")
 async def get_account() -> dict:
     """返回当前默认账号的安全信息（隐去密码）+ 已知预设。"""
-    a = get_default_account()
+    from ..config import settings
+    a = get_account_for_status()
     return {
+        "backend": (settings.email_backend or "imap").lower(),
         "configured": a.configured,
         "address": a.address,
         "imap": {"host": a.imap_host, "port": a.imap_port, "ssl": a.imap_ssl},

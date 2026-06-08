@@ -250,6 +250,7 @@
         <div class="status" id="chat-status">在线 · 流式回答</div>
       </div>
       <div class="spacer"></div>
+      <a href="calendar.html" target="_blank" title="打开日程视图" style="text-decoration:none;color:var(--accent);font-size:13px;margin-right:6px;">📅 日程</a>
       <button class="icon-btn" title="清空当前对话" onclick="clearCurrent()">🗑</button>
       <button class="icon-btn" title="工作流 / 记忆 / 运维" onclick="openDrawer('tools')">⚙</button>
     </header>
@@ -263,7 +264,7 @@
       </div>
       <div class="hint" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-          <input type="checkbox" id="agent-mode" style="margin:0;" /> 🤖 Agent 模式（能读/发邮件）
+          <input type="checkbox" id="agent-mode" style="margin:0;" checked /> 🤖 Agent 模式（能读邮件 / 查改日程）
         </label>
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--danger);">
           <input type="checkbox" id="agent-allow-send" style="margin:0;" /> 允许真发送
@@ -600,6 +601,46 @@ async function sendMessage() {
 
 async function callAgent(session, text, typingEl) {
   const allowSend = document.getElementById('agent-allow-send').checked;
+
+  // —— MS Graph device-code 登录提示卡片（前端轮询后端，按需弹出/收起） ——
+  let authCard = null;
+  function renderAuthCard(info) {
+    if (!authCard) {
+      authCard = document.createElement('div');
+      authCard.style.cssText = 'margin:8px 0;padding:12px 14px;border-radius:10px;background:#3a2a00;border:1px solid #b58900;color:#ffd166;font-size:13px;line-height:1.55;';
+      typingEl.parentNode.insertBefore(authCard, typingEl);
+    }
+    const url = info.verification_uri || 'https://www.microsoft.com/link';
+    const code = info.user_code || '';
+    const mins = info.expires_in != null ? Math.ceil(info.expires_in / 60) : null;
+    authCard.innerHTML = `
+      <div style="font-weight:700;margin-bottom:6px;">🔐 需要登录 Microsoft 账号（首次使用 Outlook 日历）</div>
+      <ol style="margin:4px 0 8px 18px;padding:0;">
+        <li>点击打开：<a href="${url}" target="_blank" rel="noopener" style="color:#7ec0ff;">${escapeHtml(url)}</a></li>
+        <li>粘贴下面这串验证码并完成登录授权：</li>
+      </ol>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+        <code style="font-size:18px;letter-spacing:2px;background:rgba(0,0,0,.35);padding:6px 12px;border-radius:6px;">${escapeHtml(code)}</code>
+        <button id="auth-copy-${code}" style="padding:4px 10px;border:1px solid var(--line);background:var(--bg-card);color:var(--text);border-radius:6px;cursor:pointer;">复制</button>
+        ${mins != null ? `<span style="color:#aaa;font-size:12px;">${mins} 分钟内有效</span>` : ''}
+      </div>
+      <div style="margin-top:8px;color:#aaa;font-size:12px;">完成登录后这条提示会自动消失，Agent 会继续执行。</div>
+    `;
+    const btn = authCard.querySelector(`#auth-copy-${code}`);
+    if (btn) btn.onclick = () => navigator.clipboard.writeText(code).then(() => { btn.textContent = '已复制'; setTimeout(() => btn.textContent = '复制', 1500); });
+  }
+  function clearAuthCard() {
+    if (authCard) { authCard.remove(); authCard = null; }
+  }
+  const authPoll = setInterval(async () => {
+    try {
+      const r = await fetch(BASE + '/v1/auth/msgraph/pending', { cache: 'no-store' });
+      const j = await r.json();
+      if (j.pending) renderAuthCard(j.pending);
+      else clearAuthCard();
+    } catch { /* 忽略瞬时网络错误 */ }
+  }, 1500);
+
   const resp = await fetch(BASE + '/v1/chat/agent/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -612,6 +653,7 @@ async function callAgent(session, text, typingEl) {
     })
   });
   if (!resp.ok || !resp.body) {
+    clearInterval(authPoll); clearAuthCard();
     const errText = await resp.text().catch(() => '');
     throw new Error('HTTP ' + resp.status + ' ' + errText);
   }
@@ -676,63 +718,68 @@ async function callAgent(session, text, typingEl) {
   // start 事件按 (name + iter + 序号) 标识，end 配对回填
   const callKeysByIter = {};
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let sep;
-    while ((sep = buf.indexOf('\n\n')) !== -1) {
-      const frame = buf.slice(0, sep);
-      buf = buf.slice(sep + 2);
-      let event = 'message';
-      const dataLines = [];
-      for (const line of frame.split('\n')) {
-        if (line.startsWith('event:')) event = line.slice(6).trim();
-        else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
-      }
-      const raw = dataLines.join('\n');
-      let data = {};
-      try { data = raw ? JSON.parse(raw) : {}; } catch { data = { _raw: raw }; }
-
-      if (event === 'token') {
-        ensureBubble();
-        tokenAcc += data.text || '';
-        renderMd(bubble, tokenAcc);
-        document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
-      } else if (event === 'tool_start') {
-        const key = data.name + '#' + data.iter + '#' + ((callKeysByIter[data.iter] = (callKeysByIter[data.iter]||0) + 1));
-        data._lastKey = key;
-        pushToolEvent({ _kind: 'start', key, name: data.name, args: data.args, iter: data.iter });
-        // 把 key 暂存到 actions 里的占位
-        actions.push({ key, name: data.name, args: data.args });
-      } else if (event === 'tool_end') {
-        // 找最近一个同名且未完成的
-        const slot = [...actions].reverse().find(a => a.name === data.name && a._done !== true);
-        const key = slot ? slot.key : (data.name + '#?');
-        if (slot) { slot._done = true; slot.ok = data.ok; slot.error = data.error; slot.result = data.result; }
-        pushToolEvent({ _kind: 'end', key, name: data.name, ok: data.ok, error: data.error });
-      } else if (event === 'tool_blocked') {
-        const ul = ensureToolLog();
-        const li = document.createElement('li');
-        li.innerHTML = `🚫 <b>${data.name}</b> 被拒绝：${escapeHtml(data.reason || '')}（勾选"允许真发送"后重试）`;
-        ul.appendChild(li);
-      } else if (event === 'done') {
-        // 服务器给出最终文本（可能比 token 累计的更完整，例如多轮间的中间 reasoning）
-        if (data.text) {
-          ensureBubble();
-          // 把工具日志暂时摘出来，重新渲染正文后再贴回去
-          const log = toolLog;
-          if (log) log.remove();
-          tokenAcc = data.text;
-          renderMd(bubble, tokenAcc);
-          if (log) bubble.appendChild(log);
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let sep;
+      while ((sep = buf.indexOf('\n\n')) !== -1) {
+        const frame = buf.slice(0, sep);
+        buf = buf.slice(sep + 2);
+        let event = 'message';
+        const dataLines = [];
+        for (const line of frame.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim();
+          else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
         }
-      } else if (event === 'error') {
-        ensureBubble();
-        bubble.innerHTML = `<span style="color:#cf222e">出错：${escapeHtml(data.message || '')}</span>`;
+        const raw = dataLines.join('\n');
+        let data = {};
+        try { data = raw ? JSON.parse(raw) : {}; } catch { data = { _raw: raw }; }
+
+        if (event === 'token') {
+          ensureBubble();
+          tokenAcc += data.text || '';
+          renderMd(bubble, tokenAcc);
+          document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+        } else if (event === 'tool_start') {
+          const key = data.name + '#' + data.iter + '#' + ((callKeysByIter[data.iter] = (callKeysByIter[data.iter]||0) + 1));
+          data._lastKey = key;
+          pushToolEvent({ _kind: 'start', key, name: data.name, args: data.args, iter: data.iter });
+          // 把 key 暂存到 actions 里的占位
+          actions.push({ key, name: data.name, args: data.args });
+        } else if (event === 'tool_end') {
+          // 找最近一个同名且未完成的
+          const slot = [...actions].reverse().find(a => a.name === data.name && a._done !== true);
+          const key = slot ? slot.key : (data.name + '#?');
+          if (slot) { slot._done = true; slot.ok = data.ok; slot.error = data.error; slot.result = data.result; }
+          pushToolEvent({ _kind: 'end', key, name: data.name, ok: data.ok, error: data.error });
+        } else if (event === 'tool_blocked') {
+          const ul = ensureToolLog();
+          const li = document.createElement('li');
+          li.innerHTML = `🚫 <b>${data.name}</b> 被拒绝：${escapeHtml(data.reason || '')}（勾选"允许真发送"后重试）`;
+          ul.appendChild(li);
+        } else if (event === 'done') {
+          // 服务器给出最终文本（可能比 token 累计的更完整，例如多轮间的中间 reasoning）
+          if (data.text) {
+            ensureBubble();
+            // 把工具日志暂时摘出来，重新渲染正文后再贴回去
+            const log = toolLog;
+            if (log) log.remove();
+            tokenAcc = data.text;
+            renderMd(bubble, tokenAcc);
+            if (log) bubble.appendChild(log);
+          }
+        } else if (event === 'error') {
+          ensureBubble();
+          bubble.innerHTML = `<span style="color:#cf222e">出错：${escapeHtml(data.message || '')}</span>`;
+        }
+        // end 事件不需要在 UI 上做事
       }
-      // end 事件不需要在 UI 上做事
     }
+  } finally {
+    clearInterval(authPoll);
+    clearAuthCard();
   }
 
   if (!bubble) {

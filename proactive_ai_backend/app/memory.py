@@ -60,6 +60,39 @@ CREATE TABLE IF NOT EXISTS summaries (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_summaries_session ON summaries(session_id);
+
+-- Calendar 事件持久化（v1 SQLite 后端；联机 Google/Graph 适配器接入时可作为本地缓存层复用）
+CREATE TABLE IF NOT EXISTS calendar_events (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    start_at TEXT NOT NULL,           -- ISO8601 (UTC)
+    end_at TEXT NOT NULL,             -- ISO8601 (UTC)
+    location TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    attendees_json TEXT NOT NULL DEFAULT '[]',
+    source TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT NOT NULL          -- ISO8601 (UTC)
+);
+CREATE INDEX IF NOT EXISTS idx_calendar_user_start ON calendar_events(user_id, start_at);
+
+-- RAG 向量块：邮件/笔记/聊天均入同一表，向量以 float32 raw bytes 存 BLOB
+CREATE TABLE IF NOT EXISTS rag_chunks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    source_type TEXT NOT NULL,        -- 'email' | 'note' | 'chat' | ...
+    source_id TEXT NOT NULL,          -- email uid / file path / chat msg id
+    chunk_seq INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    embedding BLOB NOT NULL,          -- np.float32 raw bytes
+    dim INTEGER NOT NULL,             -- 向量维度（校验防混入不同 embedder 的向量）
+    embedder TEXT NOT NULL,           -- 'mock' | 'azure:text-embedding-3-small' | ...
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, source_type, source_id, chunk_seq)
+);
+CREATE INDEX IF NOT EXISTS idx_rag_user ON rag_chunks(user_id);
+CREATE INDEX IF NOT EXISTS idx_rag_user_source ON rag_chunks(user_id, source_type, source_id);
 """
 
 
@@ -170,3 +203,61 @@ async def record_incident(trace_id: str, kind: str, payload: dict) -> None:
             (trace_id, kind, json.dumps(payload, ensure_ascii=False)),
         )
         await db.commit()
+
+
+async def list_incidents(
+    limit: int = 50,
+    kind: str | None = None,
+    since_iso: str | None = None,
+) -> list[dict[str, Any]]:
+    """运维查询：按时间倒序拉最近的事故，可按 kind 过滤。
+    `since_iso` 形如 '2026-06-01T00:00:00'，仅返回该时刻之后的记录。
+    """
+    sql = "SELECT id, trace_id, kind, payload_json, created_at FROM incidents"
+    where: list[str] = []
+    params: list[Any] = []
+    if kind:
+        where.append("kind = ?")
+        params.append(kind)
+    if since_iso:
+        where.append("created_at >= ?")
+        params.append(since_iso)
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(int(limit))
+
+    async with aiosqlite.connect(settings.sqlite_path) as db:
+        cursor = await db.execute(sql, params)
+        rows = await cursor.fetchall()
+
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        try:
+            payload = json.loads(r[3])
+        except (TypeError, ValueError):
+            payload = {"_raw": r[3]}
+        out.append(
+            {
+                "id": r[0],
+                "trace_id": r[1],
+                "kind": r[2],
+                "payload": payload,
+                "created_at": r[4],
+            }
+        )
+    return out
+
+
+async def incident_counts_by_kind(since_iso: str | None = None) -> list[dict[str, Any]]:
+    """聚合视图：按 kind 统计事故数量，供运维 dashboard 展示分布。"""
+    sql = "SELECT kind, COUNT(*) FROM incidents"
+    params: list[Any] = []
+    if since_iso:
+        sql += " WHERE created_at >= ?"
+        params.append(since_iso)
+    sql += " GROUP BY kind ORDER BY 2 DESC"
+    async with aiosqlite.connect(settings.sqlite_path) as db:
+        cursor = await db.execute(sql, params)
+        rows = await cursor.fetchall()
+    return [{"kind": r[0], "count": int(r[1])} for r in rows]

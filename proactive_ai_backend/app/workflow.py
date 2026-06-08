@@ -13,13 +13,19 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from typing import Any
 
 from .config import settings
 from .logging_setup import get_logger, get_trace_id
 from .memory import record_incident, save_workflow
-from .metrics import metrics
+from .metrics import (
+    metrics,
+    workflow_queue_depth,
+    workflow_runs_total,
+    workflow_step_duration_seconds,
+)
 from .reliability import Reliability
 from .tools import registry
 from .workflow_queue import backend as queue_backend
@@ -68,11 +74,14 @@ class WorkflowEngine:
             if tool is None:
                 err = {"step": index, "tool": tool_name, "error": "unknown_tool"}
                 results.append(err)
+                workflow_step_duration_seconds.labels(tool_name or "<none>", "error").observe(0.0)
                 await self._finalize(workflow_id, user_id, goal, "failed", steps, results)
                 await record_incident(trace_id, "workflow.unknown_tool", err)
                 metrics.inc("workflow.failed")
+                workflow_runs_total.labels("failed").inc()
                 return self._summarize(workflow_id, goal, "failed", results)
 
+            t0 = time.perf_counter()
             try:
                 # Reliability.call 会自动应用超时 / 重试 / 熔断 / fallback
                 # lambda 默认参数 t/a/c 是为了避免 Python 闭包共享变量的坑
@@ -83,21 +92,27 @@ class WorkflowEngine:
             except asyncio.TimeoutError:
                 err = {"step": index, "tool": tool_name, "error": "timeout"}
                 results.append(err)
+                workflow_step_duration_seconds.labels(tool_name, "error").observe(time.perf_counter() - t0)
                 await self._finalize(workflow_id, user_id, goal, "failed", steps, results)
                 await record_incident(trace_id, "workflow.timeout", err)
                 metrics.inc("workflow.failed")
+                workflow_runs_total.labels("failed").inc()
                 return self._summarize(workflow_id, goal, "failed", results)
             except Exception as exc:  # pragma: no cover
                 err = {"step": index, "tool": tool_name, "error": str(exc)}
                 results.append(err)
+                workflow_step_duration_seconds.labels(tool_name, "error").observe(time.perf_counter() - t0)
                 await self._finalize(workflow_id, user_id, goal, "failed", steps, results)
                 await record_incident(trace_id, "workflow.exception", err)
                 metrics.inc("workflow.failed")
+                workflow_runs_total.labels("failed").inc()
                 return self._summarize(workflow_id, goal, "failed", results)
 
             # 把本步结果合并到 context，供后续 step 使用（典型链式编排模式）
             context.update(result if isinstance(result, dict) else {"result": result})
             results.append({"step": index, "tool": tool_name, "result": result})
+            step_status = "fallback" if isinstance(result, dict) and result.get("fallback") else "ok"
+            workflow_step_duration_seconds.labels(tool_name, step_status).observe(time.perf_counter() - t0)
 
             # 中间态也实时同步，外部可以增量观察执行进度
             await save_workflow(workflow_id, user_id, goal, "running", steps, results)
@@ -106,6 +121,7 @@ class WorkflowEngine:
 
         await self._finalize(workflow_id, user_id, goal, "completed", steps, results)
         metrics.inc("workflow.completed")
+        workflow_runs_total.labels("completed").inc()
         return self._summarize(workflow_id, goal, "completed", results)
 
     async def _finalize(self, workflow_id, user_id, goal, status, steps, results) -> None:
@@ -141,6 +157,7 @@ async def enqueue_workflow(user_id: str, goal: str, steps: list[dict[str, Any]])
     await queue_backend.set_state(workflow_id, {"status": "queued"})
     await queue_backend.enqueue(payload)
     metrics.inc("workflow.enqueued")
+    workflow_queue_depth.inc()
     return workflow_id
 
 
@@ -154,6 +171,7 @@ async def _worker_loop(worker_id: int) -> None:
     while True:
         try:
             task = await queue_backend.dequeue()
+            workflow_queue_depth.dec()
             await engine.run(
                 user_id=task["user_id"],
                 goal=task["goal"],

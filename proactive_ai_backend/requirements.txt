@@ -12,6 +12,12 @@ email-validator>=2.1
 openai>=1.40
 anthropic>=0.34
 
+# Microsoft Graph (Calendar / Teams) OAuth
+msal>=1.28
+
+# RAG: 轻量级向量计算（store 里用 numpy 做余弦相似度）
+numpy>=1.26
+
 # Distributed state for workflows
 redis>=5.0
 

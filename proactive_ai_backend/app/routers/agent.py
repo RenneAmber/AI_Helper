@@ -90,6 +90,7 @@ async def chat_agent(payload: AgentRequest) -> AgentResponse:
         history=history,
         allow_send=payload.allow_send,
         max_tokens=payload.max_tokens,
+        user_id=payload.user_id,
     )
 
     # 持久化对话（带工具调用摘要标记）
@@ -128,6 +129,7 @@ async def chat_agent_stream(payload: AgentRequest) -> StreamingResponse:
                 history=history,
                 allow_send=payload.allow_send,
                 max_tokens=payload.max_tokens,
+                user_id=payload.user_id,
             ):
                 ev_type = ev.pop("type", "msg")
                 if ev_type == "done":

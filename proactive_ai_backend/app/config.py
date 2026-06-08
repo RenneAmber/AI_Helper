@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     azure_openai_endpoint: str = ""
     azure_openai_api_endpoint: str = ""  # 兼容你 app.py 里两个变量名
     azure_openai_api_version: str = "2025-01-01-preview"
-    azure_openai_deployment: str = "gpt-41_milky"
+    azure_openai_deployment: str = "gpt-5.4-mini"
 
     # ---- Anthropic ----
     anthropic_api_key: str = ""
@@ -127,6 +127,53 @@ class Settings(BaseSettings):
     # 每次推理从 semantic_facts 中检索注入 prompt 的最大条数。
     # 控制 RAG 注入预算，避免淹没近期上下文。
     semantic_top_k: int = 3
+
+    # ---- Calendar 后端 ----
+    # "memory"  —— calendar_local.InMemoryCalendarBackend（仅进程内存，重启丢）
+    # "sqlite"  —— calendar_sqlite.SqliteCalendarBackend（默认，写 proactive_ai.db.calendar_events）
+    # "msgraph" —— calendar_msgraph.MsGraphCalendarBackend（真接 Outlook / Teams）
+    calendar_backend: str = "msgraph"
+
+    # ---- Email 后端 ----
+    # "imap"    —— email_imap.EmailClient（IMAP/SMTP，需要 EMAIL_PROVIDER/EMAIL_ADDRESS/EMAIL_PASSWORD）
+    # "msgraph" —— email_msgraph.EmailGraphClient（Microsoft Graph OAuth2，
+    #             复用 Calendar 的 device-code token；首次登录会同时拿 Mail 权限）
+    email_backend: str = "imap"
+
+    # ---- Microsoft Graph / Azure AD（Calendar/Email 后端为 msgraph 时生效） ----
+    # AAD App Registration 的 Application (client) ID
+    ms_graph_client_id: str = ""
+    # Tenant：工作/学校账号填实际 tenant id；个人账号填 "consumers"；混合填 "common"
+    ms_graph_tenant_id: str = "common"
+    # Delegated scopes（以空格分隔）。offline_access 会被 MSAL 自动处理，不需手动列。
+    # 包含 Mail.* 后，首次 device flow 同意后即可既读日历又收发邮件，无需二次登录。
+    ms_graph_scopes: str = "Calendars.ReadWrite Mail.ReadWrite Mail.Send User.Read"
+    # MSAL token cache 本地路径（加密存储 access/refresh token）
+    ms_graph_token_cache_path: str = "./ms_graph_token_cache.json"
+    # 允许默认用户（可选）：未指定 user_id 时默认拿谁的日历。空表示动态按当前登录账号。
+    ms_graph_default_user: str = ""
+
+
+    # ---- RAG（检索增强生成） ----
+
+    # 是否在 prompt_builder 中自动注入 RAG 检索结果。
+    # 关闭时默认不走向量检索（避免未初始化/库空时拖慢 prompt 组装）。
+    rag_enabled: bool = False
+
+    # 检索返回的 chunk 数量，控制注入预算（太大会冲淡近期上下文）
+    rag_top_k: int = 5
+
+    # Embedding provider：mock | azure | openai；为空时按 azure→openai→mock 顺序回退
+    rag_embedder: str = ""
+
+    # Azure / OpenAI 的 embedding deployment / model 名
+    rag_embedding_model: str = "text-embedding-3-small"
+
+    # 单个 chunk 的目标字符数（中文 ≈ token 数 × 1.5，800 字符 ≈ 500 token）
+    rag_chunk_chars: int = 800
+
+    # 相邻 chunk 重叠字符数，防止切断关键信息
+    rag_chunk_overlap: int = 100
 
     # Pydantic Settings 加载配置：
     # - env_file=".env" 允许通过环境变量文件覆盖以上字段

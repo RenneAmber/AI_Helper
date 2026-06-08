@@ -1,0 +1,67 @@
+{
+  "uid": "aido-agent",
+  "title": "Aido — EmailAgent (tool-calling)",
+  "tags": ["aido", "agent"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "timezone": "browser",
+  "editable": true,
+  "panels": [
+    {
+      "id": 1, "title": "Tool calls / sec by tool",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [{
+        "expr": "sum by (tool) (rate(agent_tool_calls_total[1m]))",
+        "legendFormat": "{{tool}}", "refId": "A"
+      }]
+    },
+    {
+      "id": 2, "title": "Tool success ratio (per tool)",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } },
+      "targets": [{
+        "expr": "sum by (tool) (rate(agent_tool_calls_total{status=\"ok\"}[2m])) / clamp_min(sum by (tool) (rate(agent_tool_calls_total[2m])), 0.001)",
+        "legendFormat": "{{tool}}", "refId": "A"
+      }]
+    },
+    {
+      "id": 3, "title": "Tool latency p95 by tool",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum by (le, tool) (rate(agent_tool_duration_seconds_bucket[2m])))",
+        "legendFormat": "{{tool}} p95", "refId": "A"
+      }]
+    },
+    {
+      "id": 4, "title": "Tool errors / blocks (5m)",
+      "type": "bargauge",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "options": { "displayMode": "gradient", "orientation": "horizontal" },
+      "targets": [
+        { "expr": "sum by (tool) (increase(agent_tool_calls_total{status=\"error\"}[5m]))", "legendFormat": "{{tool}} error", "refId": "A" },
+        { "expr": "sum by (tool) (increase(agent_tool_calls_total{status=\"blocked\"}[5m]))", "legendFormat": "{{tool}} blocked", "refId": "B" }
+      ]
+    },
+    {
+      "id": 5, "title": "Agent iterations distribution (p50/p95/max)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+      "targets": [
+        { "expr": "histogram_quantile(0.5,  sum by (le) (rate(agent_iterations_bucket[5m])))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(agent_iterations_bucket[5m])))", "legendFormat": "p95", "refId": "B" }
+      ]
+    },
+    {
+      "id": 6, "title": "Total agent requests (last 1h)",
+      "type": "stat",
+      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+      "targets": [{ "expr": "sum(increase(agent_iterations_count[1h]))", "refId": "A" }]
+    }
+  ]
+}

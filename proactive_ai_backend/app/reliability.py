@@ -8,7 +8,12 @@ from typing import Awaitable, Callable, TypeVar
 
 from .config import settings
 from .logging_setup import get_logger
-from .metrics import metrics
+from .metrics import (
+    circuit_breaker_state,
+    metrics,
+    reliability_call_attempts,
+    reliability_calls_total,
+)
 
 T = TypeVar("T")
 
@@ -68,8 +73,11 @@ class Reliability:
     ) -> T:
         if not self.breaker.allow():
             metrics.inc(f"breaker.open.{self.name}")
+            circuit_breaker_state.labels(self.name).set(2)  # OPEN
             if fallback is not None:
+                reliability_calls_total.labels(self.name, "fallback").inc()
                 return await fallback(CircuitBreakerOpen(self.name))
+            reliability_calls_total.labels(self.name, "failure").inc()
             raise CircuitBreakerOpen(self.name)
 
         attempt = 0
@@ -80,22 +88,32 @@ class Reliability:
                 async with _timeout(self.timeout):
                     result = await fn()
                 self.breaker.on_success()
+                circuit_breaker_state.labels(self.name).set(0)  # CLOSED
                 metrics.inc(f"call.success.{self.name}")
                 metrics.observe(f"call.attempts.{self.name}", attempt)
+                reliability_calls_total.labels(self.name, "success").inc()
+                reliability_call_attempts.labels(self.name).observe(attempt)
                 return result
             except Exception as exc:
                 last_exc = exc
                 self.breaker.on_failure()
+                # half-open 探测阶段也在这里表现为 1 才会恢复
+                if self.breaker.failures >= self.breaker.failure_threshold:
+                    circuit_breaker_state.labels(self.name).set(2)
                 metrics.inc(f"call.failure.{self.name}")
                 logger.warning(
                     "call_failed",
-                    extra={"name": self.name, "attempt": attempt, "error": str(exc)},
+                    extra={"op": self.name, "attempt": attempt, "error": str(exc)},
                 )
                 await asyncio.sleep(self.base_delay * (2 ** (attempt - 1)) + random.uniform(0, 0.05))
 
         if fallback is not None and last_exc is not None:
+            reliability_calls_total.labels(self.name, "fallback").inc()
+            reliability_call_attempts.labels(self.name).observe(attempt)
             return await fallback(last_exc)
         assert last_exc is not None
+        reliability_calls_total.labels(self.name, "failure").inc()
+        reliability_call_attempts.labels(self.name).observe(attempt)
         raise last_exc
 
 

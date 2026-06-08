@@ -1,0 +1,73 @@
+{
+  "uid": "aido-inference",
+  "title": "Aido — Inference (HTTP + Provider)",
+  "tags": ["aido", "inference"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "timezone": "browser",
+  "editable": true,
+  "panels": [
+    {
+      "id": 1, "title": "QPS by path",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [{
+        "expr": "sum by (path) (rate(http_requests_total[1m]))",
+        "legendFormat": "{{path}}", "refId": "A"
+      }]
+    },
+    {
+      "id": 2, "title": "Latency p50 / p95 / p99 (all paths)",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.5,  sum by (le) (rate(http_request_duration_seconds_bucket[2m])))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[2m])))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[2m])))", "legendFormat": "p99", "refId": "C" }
+      ]
+    },
+    {
+      "id": 3, "title": "Latency p99 by path",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [{
+        "expr": "histogram_quantile(0.99, sum by (le, path) (rate(http_request_duration_seconds_bucket[2m])))",
+        "legendFormat": "{{path}}", "refId": "A"
+      }]
+    },
+    {
+      "id": 4, "title": "HTTP status mix",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "targets": [{
+        "expr": "sum by (status) (rate(http_requests_total[1m]))",
+        "legendFormat": "{{status}}", "refId": "A"
+      }]
+    },
+    {
+      "id": 5, "title": "Inference cache hits (counter)",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 16, "w": 6, "h": 6},
+      "targets": [{ "expr": "sum(inference_cache_hit_total) OR sum(increase(inference_cache_hit_total[5m]))", "refId": "A" }]
+    },
+    {
+      "id": 6, "title": "Inference fallbacks (5m)",
+      "type": "stat",
+      "gridPos": {"x": 6, "y": 16, "w": 6, "h": 6},
+      "targets": [{ "expr": "sum(increase(inference_fallback_total[5m]))", "refId": "A" }]
+    },
+    {
+      "id": 7, "title": "Reliability outcome rate (provider.generate)",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 6},
+      "targets": [{
+        "expr": "sum by (outcome) (rate(reliability_calls_total{name=\"provider.generate\"}[2m]))",
+        "legendFormat": "{{outcome}}", "refId": "A"
+      }]
+    }
+  ]
+}

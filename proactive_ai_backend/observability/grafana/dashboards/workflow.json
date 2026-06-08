@@ -1,0 +1,77 @@
+{
+  "uid": "aido-workflow",
+  "title": "Aido — Workflow & Reliability",
+  "tags": ["aido", "workflow"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "browser",
+  "editable": true,
+  "panels": [
+    {
+      "id": 1, "title": "Workflow runs by terminal status",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [{
+        "expr": "sum by (status) (rate(workflow_runs_total[2m]))",
+        "legendFormat": "{{status}}", "refId": "A"
+      }]
+    },
+    {
+      "id": 2, "title": "Workflow failure ratio (5m)",
+      "type": "stat",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 8},
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [ {"color":"green","value":0}, {"color":"yellow","value":0.05}, {"color":"red","value":0.2} ] } } },
+      "targets": [{
+        "expr": "sum(rate(workflow_runs_total{status=\"failed\"}[5m])) / clamp_min(sum(rate(workflow_runs_total[5m])), 0.001)",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 3, "title": "Queue depth (async tasks pending)",
+      "type": "stat",
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 8},
+      "targets": [{ "expr": "workflow_queue_depth", "refId": "A" }]
+    },
+    {
+      "id": 4, "title": "Step latency p95 by tool",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum by (le, tool) (rate(workflow_step_duration_seconds_bucket[5m])))",
+        "legendFormat": "{{tool}} p95", "refId": "A"
+      }]
+    },
+    {
+      "id": 5, "title": "Step status mix (5m increase)",
+      "type": "bargauge",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "options": { "displayMode": "gradient", "orientation": "horizontal" },
+      "targets": [{
+        "expr": "sum by (tool, status) (increase(workflow_step_duration_seconds_count[5m]))",
+        "legendFormat": "{{tool}} / {{status}}", "refId": "A"
+      }]
+    },
+    {
+      "id": 6, "title": "Circuit breaker state (0=closed 1=half 2=open)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+      "fieldConfig": { "defaults": { "min": 0, "max": 2 } },
+      "targets": [{
+        "expr": "max by (name) (circuit_breaker_state)",
+        "legendFormat": "{{name}}", "refId": "A"
+      }]
+    },
+    {
+      "id": 7, "title": "Reliability outcomes",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+      "targets": [{
+        "expr": "sum by (name, outcome) (rate(reliability_calls_total[2m]))",
+        "legendFormat": "{{name}} / {{outcome}}", "refId": "A"
+      }]
+    }
+  ]
+}
